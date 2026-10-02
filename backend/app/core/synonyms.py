@@ -41,6 +41,19 @@ TECH_SYNONYMS: Dict[str, Set[str]] = {
     "redis": {"redis", "redis cache", "caching"},
     "poo": {"poo", "oop", "programacion orientada a objetos", "object oriented programming"},
     "microservices": {"microservices", "microservicios", "arquitectura de microservicios"},
+    # Retail, Customer Service & Operations
+    "cajero": {"cajero", "cajeros", "cajera", "cajeras", "caja", "arqueo de caja", "linea de caja", "tpv", "terminal punto de venta", "cobro", "dependienta", "dependiente"},
+    "reponedor": {"reponedor", "reponedores", "reponedora", "reponedoras", "reposicion", "reposicion de mercancia", "reposicion de productos", "reponer productos", "reponer", "surtido"},
+    "retail": {"retail", "comercio", "tienda", "tiendas", "establecimiento", "supermercado", "alimentacion", "heladeria", "punto de venta", "gran superficie"},
+    "tienda": {"tienda", "tiendas", "establecimiento", "sala de ventas", "comercio", "punto de venta"},
+    "sala de ventas": {"sala de ventas", "tienda", "tiendas", "mostrador", "atencion en tienda", "servicio directo al cliente"},
+    "mercancia": {"mercancia", "productos", "articulos", "stock", "genero"},
+    "ingles": {"ingles", "english", "idiomas", "b1", "b2", "b1-b2", "intermedio", "bilingual"},
+    "dinamismo": {"dinamismo", "dinamica", "dinamico", "dinamicos", "proactivo", "iniciativa", "agil", "adaptabilidad"},
+    "limpieza": {"limpieza", "orden y limpieza", "limpieza de la tienda", "mantenimiento"},
+    "atencion al cliente": {"atencion al cliente", "servicio al cliente", "orientacion al cliente", "trato con el cliente", "atencion y servicio", "atencion y servicio directo al cliente"},
+    "trabajo en equipo": {"trabajo en equipo", "colaboracion", "companerismo", "trabajar en equipo"},
+    "jornada parcial": {"jornada parcial", "media jornada", "part time", "part-time", "turnos rotativos", "fines de semana"},
 }
 
 # Reverse index: term -> canonical name

@@ -20,7 +20,11 @@ class ATSScorer:
         # Spanish
         "lideré", "lideró", "diseñé", "diseñó", "desarrollé", "desarrolló", "construí", "implementé",
         "optimicé", "aumenté", "reduje", "generé", "automaticé", "entregué", "escalé", "lancé",
-        "creé", "gestioné", "coordiné", "transformé", "mejoré", "alcancé", "establecí"
+        "creé", "gestioné", "coordiné", "transformé", "mejoré", "alcancé", "establecí",
+        # Retail, Operations & Service
+        "atendí", "atendió", "repuse", "repuso", "mantuve", "mantuvo", "organicé", "organizó",
+        "asesoré", "asesoró", "cobré", "cobró", "realicé", "realizó", "cuidé", "cuidó", "supervisé",
+        "atención", "gestión", "reposición", "mantenimiento", "organización", "asesoramiento", "manejo"
     }
 
     METRIC_PATTERNS = [

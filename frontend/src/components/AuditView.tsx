@@ -287,9 +287,27 @@ export const AuditView: React.FC = () => {
         const uploadRes = await api.uploadResume(selected);
         setResumeId(uploadRes.id);
 
+        let activeJob = jobText;
+        const parsedStr = JSON.stringify(uploadRes.parsed || {}).toLowerCase();
+        const isRetailCV =
+          parsedStr.includes("heladeria") ||
+          parsedStr.includes("dependienta") ||
+          parsedStr.includes("caja") ||
+          parsedStr.includes("reponedor") ||
+          parsedStr.includes("tienda") ||
+          selected.name.toLowerCase().includes("clara");
+
+        if (isRetailCV && activeJob.includes("Backend Junior Java")) {
+          const pepcoTpl = JOB_TEMPLATES.find((t) => t.name.includes("Pepco"))?.text;
+          if (pepcoTpl) {
+            activeJob = pepcoTpl;
+            setJobText(pepcoTpl);
+          }
+        }
+
         const auditRes = await api.runAudit({
           resume_id: uploadRes.id,
-          job_text: jobText,
+          job_text: activeJob,
         });
         setAuditResult(auditRes.result);
         setRawAtsView(auditRes.raw_ats_view);
@@ -459,16 +477,23 @@ export const AuditView: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap gap-1 mb-2">
-                {JOB_TEMPLATES.map((tpl, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setJobText(tpl.text)}
-                    className="text-[10px] bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 px-2 py-1 rounded-md transition-colors font-medium"
-                  >
-                    {tpl.name}
-                  </button>
-                ))}
+                {JOB_TEMPLATES.map((tpl, i) => {
+                  const isActive = jobText === tpl.text;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setJobText(tpl.text)}
+                      className={`text-[10px] px-2 py-1 rounded-md transition-all font-medium border cursor-pointer ${
+                        isActive
+                          ? "bg-emerald-600 text-white border-emerald-700 font-bold shadow-xs"
+                          : "bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-slate-200"
+                      }`}
+                    >
+                      {tpl.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

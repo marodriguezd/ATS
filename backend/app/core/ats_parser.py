@@ -24,7 +24,7 @@ class ATSParser:
     }
 
     EMAIL_REGEX = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
-    PHONE_REGEX = r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,5}"
+    PHONE_REGEX = r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}(?:[-.\s]?\d{2,4})?"
     LINKEDIN_REGEX = r"(?:linkedin\.com\/(?:in|pub)\/([a-zA-Z0-9_-]+)|linkedin\.com\/[a-zA-Z0-9_-]+)"
     GITHUB_REGEX = r"(?:github\.com\/([a-zA-Z0-9_-]+))"
 
@@ -41,14 +41,19 @@ class ATSParser:
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 total_pages = len(pdf.pages)
                 for page_idx, page in enumerate(pdf.pages):
-                    # Check for tables
-                    tables = page.find_tables()
-                    if tables:
+                    # Check for real data tables (ignore empty decorative layout boxes)
+                    real_tables = []
+                    for t in page.find_tables():
+                        extracted = t.extract()
+                        if extracted and any(cell and cell.strip() for row in extracted for cell in row):
+                            real_tables.append(t)
+
+                    if real_tables:
                         has_tables = True
                         formatting_issues.append({
                             "type": "table_detected",
                             "severity": "high",
-                            "message": f"Página {page_idx + 1}: Se detectaron tablas. Muchos ATS fallan al asociar el texto de las celdas en el orden correcto.",
+                            "message": f"Página {page_idx + 1}: Se detectaron tablas de datos. Muchos ATS fallan al asociar el texto de las celdas en el orden correcto.",
                             "page": page_idx + 1
                         })
 

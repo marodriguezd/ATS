@@ -280,7 +280,29 @@ const SYNONYMS: Record<string, string[]> = {
   docker: ["docker", "contenedores", "containerization"],
   sql: ["sql", "postgresql", "postgres", "mysql", "sqlite", "mariadb"],
   git: ["git", "github", "gitlab"],
-  rest: ["rest", "api rest", "apis restful", "restful"]
+  rest: ["rest", "api rest", "apis restful", "restful"],
+  // Retail, Customer Service & Operations
+  cajero: ["cajero", "cajeros", "cajera", "cajeras", "caja", "arqueo de caja", "linea de caja", "tpv", "terminal punto de venta", "cobro", "dependienta", "dependiente"],
+  cajeros: ["cajero", "cajeros", "cajera", "cajeras", "caja", "arqueo de caja", "linea de caja", "tpv", "cobro", "dependienta"],
+  cajera: ["cajero", "cajeros", "cajera", "cajeras", "caja", "arqueo de caja", "tpv", "cobro", "dependienta"],
+  cajeras: ["cajero", "cajeros", "cajera", "cajeras", "caja", "arqueo de caja", "tpv", "cobro", "dependienta"],
+  reponedor: ["reponedor", "reponedores", "reponedora", "reponedoras", "reposicion", "reposicion de mercancia", "reposicion de productos", "reponer productos", "reponer", "surtido"],
+  reponedores: ["reponedor", "reponedores", "reponedora", "reponedoras", "reposicion", "reposicion de mercancia", "reposicion de productos", "reponer"],
+  reponedora: ["reponedor", "reponedores", "reponedora", "reponedoras", "reposicion", "reposicion de mercancia", "reposicion de productos", "reponer"],
+  retail: ["retail", "comercio", "tienda", "tiendas", "establecimiento", "supermercado", "alimentacion", "heladeria", "punto de venta", "gran superficie"],
+  tienda: ["tienda", "tiendas", "establecimiento", "sala de ventas", "comercio", "punto de venta"],
+  tiendas: ["tienda", "tiendas", "establecimiento", "sala de ventas", "comercio"],
+  "sala de ventas": ["sala de ventas", "tienda", "tiendas", "mostrador", "atencion en tienda", "servicio directo al cliente"],
+  mercancia: ["mercancia", "productos", "articulos", "stock", "genero"],
+  ingles: ["ingles", "english", "idiomas", "b1", "b2", "b1-b2", "intermedio", "bilingual"],
+  dinamismo: ["dinamismo", "dinamica", "dinamico", "dinamicos", "proactivo", "iniciativa", "agil", "adaptabilidad"],
+  limpieza: ["limpieza", "orden y limpieza", "limpieza de la tienda", "mantenimiento"],
+  "atencion al cliente": ["atencion al cliente", "servicio al cliente", "orientacion al cliente", "trato con el cliente", "atencion y servicio", "atencion y servicio directo al cliente"],
+  "orientacion al cliente": ["orientacion al cliente", "atencion al cliente", "servicio al cliente", "trato con el cliente"],
+  "trabajo en equipo": ["trabajo en equipo", "colaboracion", "companerismo", "trabajar en equipo"],
+  "jornada parcial": ["jornada parcial", "media jornada", "part time", "part-time", "turnos rotativos", "fines de semana"],
+  "atencion en caja": ["caja", "tpv", "atencion en caja", "cobro"],
+  "atencion en tienda": ["tienda", "atencion en tienda", "servicio directo al cliente"]
 };
 
 function stripAccents(str: string): string {
@@ -367,7 +389,16 @@ function extractUniversalJobKeywords(jobText: string, maxKeywords: number = 14):
     .sort((a, b) => b[1] - a[1])
     .map(([w]) => w);
 
-  const topSingles = sortedWords.slice(0, Math.max(0, maxKeywords - foundPhrases.length));
+  const seenRoots = new Set<string>();
+  const topSingles: string[] = [];
+  for (const w of sortedWords) {
+    const root = w.replace(/(es|s|as|os|a|o)$/i, "");
+    if (seenRoots.has(root) && root.length >= 3) continue;
+    seenRoots.add(root);
+    topSingles.push(w);
+    if (topSingles.length >= Math.max(0, maxKeywords - foundPhrases.length)) break;
+  }
+
   return [...foundPhrases, ...topSingles];
 }
 
