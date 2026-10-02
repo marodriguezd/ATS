@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   Wand2,
   CheckCircle2,
+  Code2,
+  Smartphone,
 } from "lucide-react";
 import { api, AuditResult } from "@/lib/api";
 import { ScoreGauge } from "./ScoreGauge";
@@ -22,7 +24,32 @@ import { StarOptimizer } from "./StarOptimizer";
 
 const JOB_TEMPLATES = [
   {
-    name: "Backend Junior / Mid (Python, Java, SQL, Docker)",
+    name: "Backend Junior Java (DAM / Spring Boot)",
+    text: `Buscamos un Desarrollador Backend Junior Java con conocimientos de Spring Boot, SQL (MySQL o PostgreSQL), APIs REST y Git.
+Requisitos:
+- Formación en Grado Superior DAM o Ingeniería Informática.
+- Experiencia en desarrollo con Java y Spring Boot.
+- Manejo de bases de datos relacionales (PostgreSQL / MySQL) y control de versiones con Git.
+- Pruebas unitarias con JUnit y contenedorización con Docker.`
+  },
+  {
+    name: "Mobile Android Junior (DAM / Kotlin)",
+    text: `Buscamos Desarrollador Android Junior con conocimientos de Kotlin, Java, Android SDK y SQLite.
+Requisitos:
+- Grado Superior en DAM.
+- Experiencia con Kotlin, consumo de APIs REST y persistencia local (Room o SQLite).
+- Valorable experiencia con Firebase y arquitectura MVVM.`
+  },
+  {
+    name: "Fullstack Junior (DAM/DAW / React / FastAPI)",
+    text: `Buscamos un Desarrollador Fullstack Junior con formación en DAM o DAW.
+Requisitos:
+- Desarrollo frontend con React, TypeScript y Tailwind CSS.
+- Desarrollo backend con Python (FastAPI o Django) y bases de datos PostgreSQL.
+- Manejo de contenedores con Docker y Git.`
+  },
+  {
+    name: "Backend Junior / Python (DAM / Docker / AWS)",
     text: `Buscamos un Desarrollador Backend Junior / Python con conocimientos de Java, Spring Boot, APIs REST, SQL y Docker.
 Requisitos:
 - Formación en DAM, DAW o Ingeniería Informática.
@@ -32,22 +59,13 @@ Requisitos:
 - Valorable interés o formación en Cloud (AWS) y Data / Inteligencia Artificial.`
   },
   {
-    name: "Senior Backend (Python, FastAPI, AWS, Redis, CI/CD)",
+    name: "Senior Backend (Python / FastAPI / AWS / Redis)",
     text: `Buscamos un Senior Backend Developer con experiencia sólida en Python, FastAPI, Docker, PostgreSQL y AWS.
 Requisitos:
 - Más de 4 años de experiencia en desarrollo backend con microservicios.
 - Dominio de bases de datos relacionales (PostgreSQL) y caching con Redis.
 - Experiencia demostrable en despliegues en AWS y automatización de pipelines CI/CD con GitHub Actions.
 - Buenas prácticas de arquitectura limpia, testing automatizado (Pytest) y metodologías ágiles (Scrum).`
-  },
-  {
-    name: "Data Analyst & IA (Python, ML, LLMs, AWS)",
-    text: `Buscamos un Ingeniero de Datos e IA Junior / Mid con dominio de Python, Pandas, NumPy, Machine Learning y despliegue en la nube.
-Requisitos:
-- Experiencia en Python, manipulación de datos con Pandas/NumPy y bases de datos SQL/NoSQL.
-- Conocimientos de modelos de Machine Learning, Deep Learning y LLMs / IA Generativa.
-- Familiaridad con Docker, Git y servicios de AWS (S3, Lambda, EC2).
-- Capacidad analítica y resolución de problemas técnicos.`
   }
 ];
 
@@ -165,6 +183,45 @@ export const AuditView: React.FC = () => {
     }
   };
 
+  // Load specific sample CV & matching job
+  const handleLoadSpecificSample = async (searchPattern: string, targetJobIndex: number) => {
+    setIsLoading(true);
+    try {
+      let candidate = savedResumes.find((r) =>
+        r.title.toLowerCase().includes(searchPattern.toLowerCase())
+      );
+
+      // If candidate is not yet saved, upload sample
+      if (!candidate && searchPattern.toLowerCase() === "carlos") {
+        const blob = new Blob([SAMPLE_CV_TEXT], { type: "text/plain" });
+        const sampleFile = new File([blob], "Carlos_Mendoza_CV.txt", { type: "text/plain" });
+        setFile(sampleFile);
+        const uploadRes = await api.uploadResume(sampleFile, "Carlos_Mendoza_CV");
+        candidate = { id: uploadRes.id, title: uploadRes.title };
+        await fetchSavedResumes();
+      }
+
+      if (candidate) {
+        setResumeId(candidate.id);
+        const job = JOB_TEMPLATES[targetJobIndex]?.text || jobText;
+        setJobText(job);
+        const auditRes = await api.runAudit({
+          resume_id: candidate.id,
+          job_text: job,
+        });
+        setAuditResult(auditRes.result);
+        setRawAtsView(auditRes.raw_ats_view);
+      } else {
+        alert(`No se encontró el CV guardado para "${searchPattern}".`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error al cargar el perfil de ejemplo");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selected = e.target.files[0];
@@ -211,27 +268,77 @@ export const AuditView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Hero */}
-      <div className="bg-emerald-950 text-white rounded-2xl p-6 shadow-sm border border-emerald-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <span className="bg-emerald-800 text-emerald-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-            Simulador de Filtros ATS en Tiempo Real
-          </span>
+      <div className="bg-emerald-950 text-white rounded-2xl p-6 shadow-sm border border-emerald-900 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="bg-emerald-800 text-emerald-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              Simulador de Filtros ATS en Tiempo Real
+            </span>
+            <span className="bg-emerald-900/80 text-emerald-300 text-[11px] px-2 py-0.5 rounded-full border border-emerald-800/60 hidden sm:inline-block">
+              Perfiles DAM / Junior listos
+            </span>
+          </div>
           <h2 className="text-xl font-bold mt-1.5">
             Comprueba si tu CV supera Workday, Taleo, Greenhouse y Lever
           </h2>
-          <p className="text-xs text-emerald-200/80 mt-1 max-w-2xl leading-relaxed">
+          <p className="text-xs text-emerald-200/80 max-w-2xl leading-relaxed">
             Sube tu PDF o Word y pega la oferta de empleo. Detectamos columnas que rompen el orden de lectura, tablas ilegibles, palabras clave faltantes y viñetas sin métricas de impacto.
           </p>
         </div>
 
-        <button
-          onClick={handleLoadSample}
-          disabled={isLoading}
-          className="shrink-0 bg-white hover:bg-slate-100 text-emerald-950 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center space-x-2"
-        >
-          <Sparkles className="w-4 h-4 text-emerald-600" />
-          <span>Probar con CV de ejemplo</span>
-        </button>
+        <div className="flex flex-col gap-2 shrink-0 w-full xl:w-auto">
+          <div className="text-[11px] font-semibold text-emerald-200 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Cargar perfil de ejemplo rápido:</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => handleLoadSpecificSample("Alejandro", 0)}
+              disabled={isLoading}
+              className="bg-emerald-900/90 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-700/50 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Alejandro Navarro - Backend Java & Spring Boot Junior"
+            >
+              <Code2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>DAM: Java / Spring</span>
+            </button>
+            <button
+              onClick={() => handleLoadSpecificSample("Laura", 1)}
+              disabled={isLoading}
+              className="bg-emerald-900/90 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-700/50 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Laura Gómez - Desarrolladora Mobile & Android Junior"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span>DAM: Android / Kotlin</span>
+            </button>
+            <button
+              onClick={() => handleLoadSpecificSample("David", 2)}
+              disabled={isLoading}
+              className="bg-emerald-900/90 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-700/50 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="David Morales - Fullstack Junior Python & React"
+            >
+              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              <span>DAM/DAW: Fullstack</span>
+            </button>
+            <button
+              onClick={() => handleLoadSpecificSample("Miguel", 3)}
+              disabled={isLoading}
+              className="bg-emerald-900/90 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-700/50 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="CV Real de Miguel Ángel Rodríguez"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>CV Miguel Ángel</span>
+            </button>
+            <button
+              onClick={() => handleLoadSpecificSample("Carlos", 4)}
+              disabled={isLoading}
+              className="bg-white hover:bg-slate-100 text-emerald-950 text-xs font-bold px-3 py-1.5 rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              title="Carlos Mendoza - Senior Backend"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Senior Backend</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main Grid: Inputs vs Results */}
