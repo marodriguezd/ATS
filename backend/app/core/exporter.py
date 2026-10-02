@@ -149,7 +149,7 @@ class ATSExporter:
 
                 bullets = exp.get("bullets", [])
                 for b in bullets:
-                    story.append(Paragraph(f"• {b}", bullet_style))
+                    story.append(Paragraph(f"&bull; {b}", bullet_style))
                 story.append(Spacer(1, 4))
 
         # 5. Skills
@@ -176,7 +176,7 @@ class ATSExporter:
                     edu_parts.append(str(year))
                 story.append(Paragraph(" | ".join(filter(None, edu_parts)), subheading_style))
                 if edu.get("notes"):
-                    story.append(Paragraph(f"• {edu['notes']}", bullet_style))
+                    story.append(Paragraph(f"&bull; {edu['notes']}", bullet_style))
             story.append(Spacer(1, 4))
 
         # 7. Certifications (if any)
@@ -184,7 +184,7 @@ class ATSExporter:
         if certs:
             story.append(Paragraph("CERTIFICATIONS", heading_style))
             for cert in certs:
-                story.append(Paragraph(f"• {cert}", bullet_style))
+                story.append(Paragraph(f"&bull; {cert}", bullet_style))
 
         doc.build(story)
         buffer.seek(0)

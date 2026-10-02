@@ -12,13 +12,13 @@ class ATSParser:
     """
 
     STANDARD_SECTION_PATTERNS = {
-        "experience": r"(?i)\b(experience|work\s+experience|professional\s+experience|employment|historial\s+laboral|experiencia\s+profesional|experiencia\s+y\s+proyectos|experiencia|proyectos\s+y\s+experiencia)\b",
-        "education": r"(?i)\b(education|academic\s+background|estudios|formaci[oó]n|educaci[oó]n|formaci[oó]n\s+acad[eé]mica)\b",
-        "skills": r"(?i)\b(skills|technical\s+skills|core\s+competencies|habilidades|competencias|tecnolog[ií]as|conocimientos\s+t[eé]cnicos)\b",
-        "summary": r"(?i)\b(summary|professional\s+summary|about\s+me|profile|perfil\s+profesional|extracto|sobre\s+m[ií]|resumen)\b",
-        "certifications": r"(?i)\b(certifications|courses|certificaciones|cursos|licencias|formaci[oó]n\s+complementaria)\b",
-        "projects": r"(?i)\b(projects|personal\s+projects|proyectos|proyectos\s+destacados)\b",
-        "languages": r"(?i)\b(languages|idiomas)\b",
+        "experience": r"(?i).*\b(experience|employment|historial\s+laboral|experiencia|proyectos)\b.*",
+        "education": r"(?i).*\b(education|academic|estudios|formaci[oó]n|educaci[oó]n)\b.*",
+        "skills": r"(?i).*\b(skills|competencies|habilidades|competencias|tecnolog[ií]as|conocimientos)\b.*",
+        "summary": r"(?i).*\b(summary|about\s+me|profile|perfil|extracto|resumen)\b.*",
+        "certifications": r"(?i).*\b(certifications|courses|certificaciones|cursos|licencias)\b.*",
+        "projects": r"(?i).*\b(projects|proyectos)\b.*",
+        "languages": r"(?i).*\b(languages|idiomas)\b.*",
     }
 
     EMAIL_REGEX = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
@@ -49,14 +49,17 @@ class ATSParser:
                             "page": page_idx + 1
                         })
 
-                    # Check for multi-column layout by analyzing word horizontal bounds
+                    # Check for true multi-column layout
                     words = page.extract_words()
                     if words:
                         mid_x = page.width / 2
-                        left_words = [w for w in words if w["x1"] < mid_x - 10]
-                        right_words = [w for w in words if w["x0"] > mid_x + 10]
-                        # If significant words exist simultaneously on both sides without overlapping the middle
-                        if len(left_words) > 20 and len(right_words) > 20:
+                        left_words = [w for w in words if w["x1"] < mid_x - 20]
+                        right_words = [w for w in words if w["x0"] > mid_x + 20]
+                        # Words occupying the central gutter (mid_x - 25 to mid_x + 25)
+                        central_words = [w for w in words if not (w["x1"] < mid_x - 25 or w["x0"] > mid_x + 25)]
+
+                        # In true 2-column layouts, both columns are dense (>25 words) and the central gutter is empty (<5 words)
+                        if len(left_words) > 25 and len(right_words) > 25 and len(central_words) < 5:
                             is_multi_column = True
                             formatting_issues.append({
                                 "type": "multi_column_detected",
@@ -66,7 +69,7 @@ class ATSParser:
                             })
 
                     # Extract plain text as a standard ATS stream reader would
-                    page_text = page.extract_text(layout=False) or ""
+                    page_text = (page.extract_text(layout=False) or "").replace("(cid:127)", "• ")
                     raw_text_pages.append(page_text)
 
         except Exception as e:

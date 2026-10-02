@@ -142,7 +142,7 @@ class ATSScorer:
     @classmethod
     def _calculate_impact(cls, raw_text: str) -> Tuple[int, Dict[str, Any]]:
         lines = [line.strip() for line in raw_text.split("\n") if len(line.strip()) > 15]
-        bullet_lines = [l for l in lines if re.match(r"^[-•*–—\d\.]\s*", l) or len(l) > 25]
+        bullet_lines = [l for l in lines if re.match(r"^(\(cid:\d+\)|[-•*–—\d\.]|\&bull\;)\s*", l) or len(l) > 25]
 
         action_verb_count = 0
         metric_count = 0
@@ -156,10 +156,12 @@ class ATSScorer:
             total_metrics += len(matches)
 
         for line in bullet_lines:
-            words = re.findall(r"\b[a-zA-ZáéíóúÁÉÍÓÚñÑ]+\b", line.lower())
-            first_words = words[:3] if words else []
+            # Clean line from bullet prefix or cid artifacts
+            cleaned_line = re.sub(r"^(\(cid:\d+\)|[-•*–—\d\.]|\&bull\;)\s*", "", line)
+            words = [w for w in re.findall(r"\b[a-zA-ZáéíóúÁÉÍÓÚñÑ]+\b", cleaned_line.lower()) if w not in {"cid"}]
+            first_words = words[:4] if words else []
             has_action = any(v in cls.ACTION_VERBS for v in first_words)
-            has_metric = any(re.search(pat, line, re.IGNORECASE) for pat in cls.METRIC_PATTERNS)
+            has_metric = any(re.search(pat, cleaned_line, re.IGNORECASE) for pat in cls.METRIC_PATTERNS)
 
             if has_action:
                 action_verb_count += 1
