@@ -12,12 +12,12 @@ class ATSParser:
     """
 
     STANDARD_SECTION_PATTERNS = {
-        "experience": r"(?i)\b(experience|work\s+experience|professional\s+experience|employment|historial\s+laboral|experiencia\s+profesional|experiencia)\b",
-        "education": r"(?i)\b(education|academic\s+background|estudios|formaci[oó]n|educaci[oó]n)\b",
-        "skills": r"(?i)\b(skills|technical\s+skills|core\s+competencies|habilidades|competencias|tecnolog[ií]as)\b",
-        "summary": r"(?i)\b(summary|professional\s+summary|about\s+me|profile|perfil\s+profesional|extracto|sobre\s+m[ií])\b",
-        "certifications": r"(?i)\b(certifications|courses|certificaciones|cursos|licencias)\b",
-        "projects": r"(?i)\b(projects|personal\s+projects|proyectos)\b",
+        "experience": r"(?i)\b(experience|work\s+experience|professional\s+experience|employment|historial\s+laboral|experiencia\s+profesional|experiencia\s+y\s+proyectos|experiencia|proyectos\s+y\s+experiencia)\b",
+        "education": r"(?i)\b(education|academic\s+background|estudios|formaci[oó]n|educaci[oó]n|formaci[oó]n\s+acad[eé]mica)\b",
+        "skills": r"(?i)\b(skills|technical\s+skills|core\s+competencies|habilidades|competencias|tecnolog[ií]as|conocimientos\s+t[eé]cnicos)\b",
+        "summary": r"(?i)\b(summary|professional\s+summary|about\s+me|profile|perfil\s+profesional|extracto|sobre\s+m[ií]|resumen)\b",
+        "certifications": r"(?i)\b(certifications|courses|certificaciones|cursos|licencias|formaci[oó]n\s+complementaria)\b",
+        "projects": r"(?i)\b(projects|personal\s+projects|proyectos|proyectos\s+destacados)\b",
         "languages": r"(?i)\b(languages|idiomas)\b",
     }
 

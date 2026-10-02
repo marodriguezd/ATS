@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   UploadCloud,
   FileCheck2,
@@ -56,6 +56,38 @@ export const AuditView: React.FC = () => {
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [rawAtsView, setRawAtsView] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"overview" | "keywords" | "raw" | "star">("overview");
+  const [savedResumes, setSavedResumes] = useState<any[]>([]);
+
+  const fetchSavedResumes = async () => {
+    try {
+      const list = await api.listResumes();
+      setSavedResumes(list);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchSavedResumes();
+  }, []);
+
+  const handleSelectSaved = async (id: number) => {
+    setResumeId(id);
+    setIsLoading(true);
+    try {
+      const auditRes = await api.runAudit({
+        resume_id: id,
+        job_text: jobText,
+      });
+      setAuditResult(auditRes.result);
+      setRawAtsView(auditRes.raw_ats_view);
+    } catch (err) {
+      console.error(err);
+      alert("Error al auditar el CV seleccionado.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Load sample CV directly
   const handleLoadSample = async () => {
@@ -97,6 +129,7 @@ export const AuditView: React.FC = () => {
         });
         setAuditResult(auditRes.result);
         setRawAtsView(auditRes.raw_ats_view);
+        await fetchSavedResumes();
       } catch (err) {
         console.error(err);
         alert("Error al subir y analizar el archivo.");
@@ -160,6 +193,29 @@ export const AuditView: React.FC = () => {
               <UploadCloud className="w-4 h-4 text-emerald-600" />
               <span>1. Tu Currículum (PDF, DOCX, TXT)</span>
             </label>
+
+            {savedResumes.length > 0 && (
+              <div className="mb-3">
+                <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                  O auditar uno guardado:
+                </label>
+                <select
+                  value={resumeId || ""}
+                  onChange={(e) => {
+                    const id = Number(e.target.value);
+                    if (id) handleSelectSaved(id);
+                  }}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium cursor-pointer"
+                >
+                  <option value="">-- Seleccionar CV --</option>
+                  {savedResumes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title} ({r.file_type.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="relative border-2 border-dashed border-slate-200 hover:border-emerald-400 rounded-xl p-5 text-center transition-colors bg-slate-50/50">
               <input
