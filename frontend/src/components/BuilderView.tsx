@@ -14,6 +14,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { downloadClientPdf, downloadClientDocx, downloadClientTxt } from "@/lib/clientExporter";
 
 interface ExperienceItem {
   role: string;
@@ -150,7 +151,46 @@ export const BuilderView: React.FC = () => {
     setEducation(updated);
   };
 
-  // Save to DB and get export links
+  const handleClientExport = (format: "pdf" | "docx" | "txt") => {
+    const skillsArray = skills.split(",").map((s) => s.trim()).filter(Boolean);
+    const expLines: string[] = [];
+    experience.forEach((exp) => {
+      expLines.push(`${exp.role} | ${exp.company} | ${exp.dates} | ${exp.location}`);
+      exp.bullets.forEach((b) => expLines.push(`• ${b}`));
+    });
+
+    const eduLines: string[] = [];
+    education.forEach((edu) => {
+      eduLines.push(`${edu.degree} - ${edu.institution} (${edu.year})`);
+      if (edu.notes) eduLines.push(edu.notes);
+    });
+
+    const exportPayload = {
+      title: `${fullName} - ATS CV`,
+      full_name: fullName,
+      email,
+      phone,
+      location,
+      linkedin,
+      github,
+      summary,
+      sections: {
+        "Experiencia Profesional": expLines,
+        "Habilidades Técnicas": skillsArray.join(", "),
+        "Educación": eduLines,
+      },
+    };
+
+    if (format === "pdf") {
+      downloadClientPdf(exportPayload);
+    } else if (format === "docx") {
+      downloadClientDocx(exportPayload);
+    } else {
+      downloadClientTxt(exportPayload);
+    }
+  };
+
+  // Save to DB and export locally
   const handleSaveAndPrepareExport = async () => {
     setIsSaving(true);
     try {
@@ -170,6 +210,7 @@ export const BuilderView: React.FC = () => {
       };
       const res = await api.createResume(payload);
       setCreatedId(res.id);
+      handleClientExport("pdf");
     } catch (e) {
       console.error(e);
       alert("Error al guardar el CV");
@@ -195,10 +236,10 @@ export const BuilderView: React.FC = () => {
           <button
             onClick={handleSaveAndPrepareExport}
             disabled={isSaving}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-xs flex items-center space-x-2 disabled:opacity-50"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-xs flex items-center space-x-2 disabled:opacity-50 cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>{isSaving ? "Guardando..." : "Guardar & Exportar"}</span>
+            <span>{isSaving ? "Guardando..." : "Guardar & Exportar PDF"}</span>
           </button>
         </div>
       </div>
@@ -208,34 +249,29 @@ export const BuilderView: React.FC = () => {
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
           <div className="text-xs text-emerald-900 font-semibold flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>¡CV listo para descargar en formatos certificados para ATS!</span>
+            <span>¡CV guardado y descargado! Puedes volver a descargarlo en otros formatos:</span>
           </div>
 
           <div className="flex items-center space-x-2">
-            <a
-              href={api.getExportUrl(createdId, "pdf")}
-              target="_blank"
-              rel="noreferrer"
-              className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-2xs"
+            <button
+              onClick={() => handleClientExport("pdf")}
+              className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center space-x-1.5"
             >
-              Descargar PDF (1 columna)
-            </a>
-            <a
-              href={api.getExportUrl(createdId, "docx")}
-              target="_blank"
-              rel="noreferrer"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-2xs"
+              <Download className="w-3.5 h-3.5" />
+              <span>Descargar PDF</span>
+            </button>
+            <button
+              onClick={() => handleClientExport("docx")}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-2xs cursor-pointer"
             >
-              Descargar Word (.docx)
-            </a>
-            <a
-              href={api.getExportUrl(createdId, "txt")}
-              target="_blank"
-              rel="noreferrer"
-              className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-2xs"
+              Descargar Word (.doc)
+            </button>
+            <button
+              onClick={() => handleClientExport("txt")}
+              className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-2xs cursor-pointer"
             >
               Texto Plano
-            </a>
+            </button>
           </div>
         </div>
       )}
