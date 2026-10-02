@@ -153,6 +153,10 @@ export const AuditView: React.FC = () => {
 
       const activeResumeTitle = savedResumes.find((r) => r.id === resumeId)?.title || "CV_ATS_Optimizado";
 
+      const cleanRaw = (currentResumeData?.raw_text || untangledView || rawAtsView || "")
+        .replace(/^===.*?===\n?/gm, "")
+        .trim();
+
       const exportPayload = {
         title: activeResumeTitle,
         full_name: currentResumeData?.parsed?.full_name || activeResumeTitle.replace(/\.[^/.]+$/, ""),
@@ -163,13 +167,13 @@ export const AuditView: React.FC = () => {
         github: currentResumeData?.parsed?.github || "github.com/marodriguezd",
         summary: currentResumeData?.parsed?.summary,
         sections: currentResumeData?.parsed?.sections,
-        raw_text: untangledView || rawAtsView || currentResumeData?.raw_text
+        raw_text: cleanRaw
       };
 
       if (format === "pdf") {
         downloadClientPdf(exportPayload);
       } else if (format === "docx") {
-        downloadClientDocx(exportPayload);
+        await downloadClientDocx(exportPayload);
       } else {
         downloadClientTxt(exportPayload);
       }
@@ -503,30 +507,24 @@ export const AuditView: React.FC = () => {
                 Exporta el CV estructurado sin columnas rotas ni tablas que puedan ser descartadas.
               </p>
               <div className="grid grid-cols-3 gap-2 pt-1">
-                <a
-                  href={api.getExportUrl(resumeId, "pdf")}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-center bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold py-2 px-2 rounded-lg transition-colors shadow-2xs"
+                <button
+                  onClick={() => handleExport("pdf")}
+                  className="text-center bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold py-2 px-2 rounded-lg transition-colors shadow-2xs cursor-pointer"
                 >
                   PDF 1-Col
-                </a>
-                <a
-                  href={api.getExportUrl(resumeId, "docx")}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-center bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold py-2 px-2 rounded-lg transition-colors shadow-2xs"
+                </button>
+                <button
+                  onClick={() => handleExport("docx")}
+                  className="text-center bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold py-2 px-2 rounded-lg transition-colors shadow-2xs cursor-pointer"
                 >
                   Word DOCX
-                </a>
-                <a
-                  href={api.getExportUrl(resumeId, "txt")}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-center bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold py-2 px-2 rounded-lg transition-colors border border-slate-300"
+                </button>
+                <button
+                  onClick={() => handleExport("txt")}
+                  className="text-center bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold py-2 px-2 rounded-lg transition-colors border border-slate-300 cursor-pointer"
                 >
                   Texto Plano
-                </a>
+                </button>
               </div>
             </div>
           )}
@@ -598,7 +596,7 @@ export const AuditView: React.FC = () => {
                     onClick={() => handleExport("docx")}
                     className="flex-1 sm:flex-none bg-emerald-900 hover:bg-emerald-800 text-emerald-100 text-xs font-semibold py-2 px-3 rounded-xl border border-emerald-700/60 transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                   >
-                    <span>Word (.doc)</span>
+                    <span>Word (.docx)</span>
                   </button>
                   <button
                     onClick={() => handleExport("txt")}

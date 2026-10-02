@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { Document, Packer, Paragraph, TextRun } from "docx";
 
 export interface ResumeExportData {
   title?: string;
@@ -117,8 +118,8 @@ export function downloadClientPdf(data: ResumeExportData, customFilename?: strin
       y += 8;
     }
   } else if (data.raw_text) {
-    // Fallback: render raw_text line by line with ATS typography
-    const lines = data.raw_text.split("\n");
+    const cleanRaw = data.raw_text.replace(/^===.*?===\n?/gm, "").trim();
+    const lines = cleanRaw.split("\n");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(40, 40, 40);
@@ -130,8 +131,13 @@ export function downloadClientPdf(data: ResumeExportData, customFilename?: strin
         continue;
       }
       checkPageBreak(14);
-      // Check if line is an uppercase section heading
-      if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 && trimmed.length < 35 && !trimmed.includes("|")) {
+      if (
+        trimmed === trimmed.toUpperCase() &&
+        trimmed.length > 3 &&
+        trimmed.length < 35 &&
+        !trimmed.includes("|") &&
+        !trimmed.includes("@")
+      ) {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10.5);
         doc.setTextColor(15, 23, 42);
@@ -156,82 +162,224 @@ export function downloadClientPdf(data: ResumeExportData, customFilename?: strin
   doc.save(filename);
 }
 
-export function downloadClientDocx(data: ResumeExportData, customFilename?: string) {
-  // Generate Microsoft Word-compatible HTML document with strict 0.5in margins and single-column layout
-  const name = data.full_name || data.title || "Currículum Vitae";
+export async function downloadClientDocx(data: ResumeExportData, customFilename?: string) {
+  const docParagraphs: Paragraph[] = [];
+
+  // 1. Header: Full Name
+  const name = (data.full_name || data.title || "CURRICULUM VITAE").toUpperCase();
+  docParagraphs.push(
+    new Paragraph({
+      spacing: { after: 120 },
+      children: [
+        new TextRun({
+          text: name,
+          bold: true,
+          size: 32, // 16pt
+          font: "Arial",
+          color: "111111",
+        }),
+      ],
+    })
+  );
+
+  // 2. Contact Information
   const contactParts: string[] = [];
   if (data.email) contactParts.push(data.email);
   if (data.phone) contactParts.push(data.phone);
   if (data.location) contactParts.push(data.location);
-  if (data.linkedin) contactParts.push(data.linkedin);
-  if (data.github) contactParts.push(data.github);
+  if (data.linkedin) contactParts.push(data.linkedin.replace(/^https?:\/\//, ""));
+  if (data.github) contactParts.push(data.github.replace(/^https?:\/\//, ""));
 
-  let bodyHtml = `<h1 style="font-size: 18pt; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-weight: bold; text-transform: uppercase;">${name}</h1>`;
   if (contactParts.length > 0) {
-    bodyHtml += `<p style="font-size: 9.5pt; color: #555555; margin: 4pt 0 10pt 0; font-family: Arial, Helvetica, sans-serif;">${contactParts.join(" | ")}</p>`;
+    docParagraphs.push(
+      new Paragraph({
+        spacing: { after: 200 },
+        children: [
+          new TextRun({
+            text: contactParts.join("  |  "),
+            size: 19, // 9.5pt
+            font: "Arial",
+            color: "555555",
+          }),
+        ],
+      })
+    );
   }
-  bodyHtml += `<hr style="border: none; border-top: 1pt solid #cccccc; margin: 8pt 0 12pt 0;" />`;
 
+  // 3. Summary
   if (data.summary) {
-    bodyHtml += `<h2 style="font-size: 11pt; font-family: Arial, Helvetica, sans-serif; margin: 10pt 0 4pt 0; font-weight: bold; text-transform: uppercase; color: #111111;">RESUMEN PROFESIONAL</h2>`;
-    bodyHtml += `<p style="font-size: 10pt; line-height: 1.4; margin: 0 0 10pt 0; font-family: Arial, Helvetica, sans-serif;">${data.summary}</p>`;
+    docParagraphs.push(
+      new Paragraph({
+        spacing: { before: 200, after: 80 },
+        children: [
+          new TextRun({
+            text: "RESUMEN PROFESIONAL",
+            bold: true,
+            size: 22, // 11pt
+            font: "Arial",
+            color: "111111",
+          }),
+        ],
+      })
+    );
+    docParagraphs.push(
+      new Paragraph({
+        spacing: { after: 160 },
+        children: [
+          new TextRun({
+            text: data.summary,
+            size: 20, // 10pt
+            font: "Arial",
+            color: "333333",
+          }),
+        ],
+      })
+    );
   }
 
-  if (data.sections) {
+  // 4. Sections
+  if (data.sections && Object.keys(data.sections).length > 0) {
     for (const [secTitle, secContent] of Object.entries(data.sections)) {
-      bodyHtml += `<h2 style="font-size: 11pt; font-family: Arial, Helvetica, sans-serif; margin: 12pt 0 4pt 0; font-weight: bold; text-transform: uppercase; color: #111111;">${secTitle}</h2>`;
+      docParagraphs.push(
+        new Paragraph({
+          spacing: { before: 220, after: 80 },
+          children: [
+            new TextRun({
+              text: secTitle.toUpperCase(),
+              bold: true,
+              size: 22, // 11pt
+              font: "Arial",
+              color: "111111",
+            }),
+          ],
+        })
+      );
+
       const items = Array.isArray(secContent) ? secContent : [secContent];
-      bodyHtml += `<ul style="margin: 0 0 10pt 16pt; padding: 0; font-size: 10pt; line-height: 1.4; font-family: Arial, Helvetica, sans-serif;">`;
       for (const item of items) {
         if (!item || !item.trim()) continue;
-        const clean = item.replace(/^[\*\-•]\s*/, "");
-        bodyHtml += `<li style="margin-bottom: 3pt;">${clean}</li>`;
+        const isBullet = item.trim().startsWith("*") || item.trim().startsWith("-") || item.trim().startsWith("•");
+        const cleanText = item.replace(/^[\*\-•]\s*/, "");
+
+        if (isBullet) {
+          docParagraphs.push(
+            new Paragraph({
+              bullet: { level: 0 },
+              spacing: { after: 60 },
+              children: [
+                new TextRun({
+                  text: cleanText,
+                  size: 20,
+                  font: "Arial",
+                  color: "333333",
+                }),
+              ],
+            })
+          );
+        } else {
+          docParagraphs.push(
+            new Paragraph({
+              spacing: { after: 60 },
+              children: [
+                new TextRun({
+                  text: cleanText,
+                  size: 20,
+                  font: "Arial",
+                  color: "333333",
+                }),
+              ],
+            })
+          );
+        }
       }
-      bodyHtml += `</ul>`;
     }
   } else if (data.raw_text) {
-    bodyHtml += `<pre style="font-family: Arial, Helvetica, sans-serif; font-size: 9.5pt; white-space: pre-wrap; line-height: 1.4;">${data.raw_text}</pre>`;
+    const cleanRaw = data.raw_text.replace(/^===.*?===\n?/gm, "").trim();
+    const lines = cleanRaw.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const isHeading =
+        trimmed === trimmed.toUpperCase() &&
+        trimmed.length > 3 &&
+        trimmed.length < 35 &&
+        !trimmed.includes("|") &&
+        !trimmed.includes("@");
+
+      if (isHeading) {
+        docParagraphs.push(
+          new Paragraph({
+            spacing: { before: 200, after: 80 },
+            children: [
+              new TextRun({
+                text: trimmed,
+                bold: true,
+                size: 22,
+                font: "Arial",
+                color: "111111",
+              }),
+            ],
+          })
+        );
+      } else if (trimmed.startsWith("*") || trimmed.startsWith("-") || trimmed.startsWith("•")) {
+        docParagraphs.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            spacing: { after: 60 },
+            children: [
+              new TextRun({
+                text: trimmed.replace(/^[\*\-•]\s*/, ""),
+                size: 20,
+                font: "Arial",
+                color: "333333",
+              }),
+            ],
+          })
+        );
+      } else {
+        docParagraphs.push(
+          new Paragraph({
+            spacing: { after: 60 },
+            children: [
+              new TextRun({
+                text: trimmed,
+                size: 20,
+                font: "Arial",
+                color: "333333",
+              }),
+            ],
+          })
+        );
+      }
+    }
   }
 
-  const wordDoc = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <title>${name}</title>
-        <!--[if gte mso 9]>
-        <xml>
-          <w:WordDocument>
-            <w:View>Print</w:View>
-            <w:Zoom>100</w:Zoom>
-          </w:WordDocument>
-        </xml>
-        <![endif]-->
-        <style>
-          @page {
-            size: 21cm 29.7cm;
-            margin: 1.27cm 1.27cm 1.27cm 1.27cm;
-            mso-page-orientation: portrait;
-          }
-          body {
-            font-family: Arial, Helvetica, sans-serif;
-            color: #111111;
-          }
-        </style>
-      </head>
-      <body>
-        ${bodyHtml}
-      </body>
-    </html>
-  `;
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 720, // 0.5 in
+              right: 720,
+              bottom: 720,
+              left: 720,
+            },
+          },
+        },
+        children: docParagraphs,
+      },
+    ],
+  });
 
-  const blob = new Blob(["\ufeff" + wordDoc], { type: "application/msword" });
+  const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   const safeName = (data.full_name || data.title || "CV_ATS")
     .replace(/[^a-zA-Z0-9_\-áéíóúÁÉÍÓÚñÑ]/g, "_")
     .replace(/_+/g, "_");
-  a.download = customFilename || `${safeName}_ATS.doc`;
+  a.download = customFilename || `${safeName}_ATS.docx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -239,26 +387,28 @@ export function downloadClientDocx(data: ResumeExportData, customFilename?: stri
 }
 
 export function downloadClientTxt(data: ResumeExportData, customFilename?: string) {
-  let content = data.raw_text || "";
-  if (!content) {
-    const parts = [
-      (data.full_name || data.title || "").toUpperCase(),
-      [data.email, data.phone, data.location, data.linkedin, data.github].filter(Boolean).join(" | "),
+  let content = "";
+  if (data.sections && Object.keys(data.sections).length > 0) {
+    const parts: string[] = [
+      (data.full_name || data.title || "CURRICULUM VITAE").toUpperCase(),
+      [data.email, data.phone, data.location, data.linkedin, data.github].filter(Boolean).join("  |  "),
       "--------------------------------------------------",
     ];
     if (data.summary) {
       parts.push("\nRESUMEN PROFESIONAL\n" + data.summary);
     }
-    if (data.sections) {
-      for (const [title, items] of Object.entries(data.sections)) {
-        parts.push(`\n${title.toUpperCase()}`);
-        const it = Array.isArray(items) ? items : [items];
-        for (const item of it) {
-          parts.push(`* ${item.replace(/^[\*\-•]\s*/, "")}`);
-        }
+    for (const [title, items] of Object.entries(data.sections)) {
+      parts.push(`\n${title.toUpperCase()}`);
+      const it = Array.isArray(items) ? items : [items];
+      for (const item of it) {
+        if (!item || !item.trim()) continue;
+        const clean = item.replace(/^[\*\-•]\s*/, "");
+        parts.push(`* ${clean}`);
       }
     }
     content = parts.join("\n");
+  } else if (data.raw_text) {
+    content = data.raw_text.replace(/^===.*?===\n?/gm, "").trim();
   }
 
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
