@@ -1,0 +1,322 @@
+import re
+from typing import Dict, Any, List, Set, Tuple
+
+class ATSScorer:
+    """
+    Multidimensional ATS Scorer:
+    1. Parseability (0-100)
+    2. Keyword Match (0-100)
+    3. Impact & STAR/Metrics (0-100)
+    4. Format & Length (0-100)
+    """
+
+    ACTION_VERBS = {
+        # English
+        "led", "spearheaded", "developed", "architected", "engineered", "designed",
+        "implemented", "built", "optimized", "increased", "decreased", "reduced",
+        "generated", "automated", "delivered", "mentored", "orchestrated", "transformed",
+        "achieved", "launched", "scaled", "negotiated", "managed", "created", "streamlined",
+        # Spanish
+        "lideré", "lideró", "diseñé", "diseñó", "desarrollé", "desarrolló", "construí", "implementé",
+        "optimicé", "aumenté", "reduje", "generé", "automaticé", "entregué", "escalé", "lancé",
+        "creé", "gestioné", "coordiné", "transformé", "mejoré", "alcancé", "establecí"
+    }
+
+    METRIC_PATTERNS = [
+        r"\b\d+([.,]\d+)?\s*%",                      # Percentages: 25%, 3.5%
+        r"[\$€£¥]\s*\d+([.,]\d+)?\s*(k|m|b|mil|millones)?\b",  # Currency: $100k, €5M
+        r"\b\d+([.,]\d+)?\s*(k|m|b|mil|millones)\b", # Multipliers: 50k, 2M
+        r"\b\d+\s*\+\s*(users|usuarios|clients|clientes|projects|proyectos|leads|commits)\b",
+        r"\b(2x|3x|4x|5x|10x)\b",                   # Multipliers: 2x faster
+        r"\b\d+\s*(segundos|minutos|horas|días|semanas|meses|seconds|minutes|hours|days|weeks|months)\b",
+        r"\bde\s+\d+\s+a\s+\d+\b",                  # "de 10 a 50"
+        r"\bfrom\s+\d+\s+to\s+\d+\b",
+    ]
+
+    COMMON_TECH_KEYWORDS = {
+        "python", "javascript", "typescript", "react", "next.js", "nextjs", "vue", "angular",
+        "node", "nodejs", "express", "fastapi", "django", "flask", "docker", "kubernetes",
+        "aws", "azure", "gcp", "sql", "postgresql", "mysql", "mongodb", "redis",
+        "git", "github", "ci/cd", "rest", "graphql", "tailwind", "html", "css",
+        "linux", "bash", "agile", "scrum", "microservices", "terraform", "kafka",
+        "pytest", "jest", "cypress", "spark", "pandas", "numpy", "machine learning",
+        "llm", "ai", "figma", "system design", "devops", "cloud"
+    }
+
+    @classmethod
+    def score_all(cls, resume_parse: Dict[str, Any], job_text: str = "") -> Dict[str, Any]:
+        raw_text = resume_parse.get("raw_text", "")
+        formatting_issues = list(resume_parse.get("formatting_issues", []))
+
+        # 1. Parseability Score
+        parseability_score, parse_details = cls._calculate_parseability(resume_parse)
+
+        # 2. Impact & Action Verbs / Metrics Score
+        impact_score, impact_details = cls._calculate_impact(raw_text)
+
+        # 3. Format & Structure Score
+        format_score, format_details = cls._calculate_format(resume_parse)
+
+        # 4. Keyword Match Score (against job description if provided)
+        keyword_score, kw_details = cls._calculate_keywords(raw_text, job_text)
+
+        # Overall weighted score
+        if job_text.strip():
+            overall = int(
+                keyword_score * 0.40 +
+                impact_score * 0.25 +
+                parseability_score * 0.20 +
+                format_score * 0.15
+            )
+        else:
+            # Standalone CV score without job comparison
+            overall = int(
+                impact_score * 0.40 +
+                parseability_score * 0.35 +
+                format_score * 0.25
+            )
+
+        # Priority Recommendations
+        recommendations = cls._generate_priority_recommendations(
+            parseability_score, keyword_score, impact_score, format_score,
+            kw_details, impact_details, formatting_issues
+        )
+
+        return {
+            "overall_score": max(0, min(100, overall)),
+            "breakdown": {
+                "parseability": parseability_score,
+                "keyword_match": keyword_score,
+                "impact": impact_score,
+                "format": format_score,
+            },
+            "parse_details": parse_details,
+            "keyword_details": kw_details,
+            "impact_details": impact_details,
+            "format_details": format_details,
+            "formatting_issues": formatting_issues,
+            "priority_recommendations": recommendations,
+        }
+
+    @classmethod
+    def _calculate_parseability(cls, resume_parse: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        score = 100
+        penalties = []
+        sections = resume_parse.get("sections", {})
+        contact = resume_parse.get("contact_info", {})
+
+        # Standard sections detected
+        key_sections = ["experience", "education", "skills"]
+        missing_sections = [s for s in key_sections if s not in sections]
+        if missing_sections:
+            deduction = len(missing_sections) * 15
+            score -= deduction
+            penalties.append(f"Secciones clave no detectadas como encabezado estándar: {', '.join(missing_sections)} (-{deduction} pts)")
+
+        # Column layout
+        if resume_parse.get("is_multi_column"):
+            score -= 25
+            penalties.append("Diseño a múltiples columnas detectado (-25 pts). Rompe el orden de lectura de Workday/Taleo.")
+
+        # Tables
+        if resume_parse.get("has_tables"):
+            score -= 15
+            penalties.append("Tablas detectadas en el diseño (-15 pts).")
+
+        # Contact info
+        if not contact.get("email"):
+            score -= 30
+            penalties.append("Correo electrónico ausente o en formato ilegible (-30 pts).")
+        if not contact.get("phone"):
+            score -= 10
+            penalties.append("Teléfono ausente o ilegible (-10 pts).")
+
+        final_score = max(10, min(100, score))
+        return final_score, {
+            "detected_sections": list(sections.keys()),
+            "missing_sections": missing_sections,
+            "contact_found": contact,
+            "penalties": penalties
+        }
+
+    @classmethod
+    def _calculate_impact(cls, raw_text: str) -> Tuple[int, Dict[str, Any]]:
+        lines = [line.strip() for line in raw_text.split("\n") if len(line.strip()) > 15]
+        bullet_lines = [l for l in lines if re.match(r"^[-•*–—\d\.]\s*", l) or len(l) > 25]
+
+        action_verb_count = 0
+        metric_count = 0
+        star_like_bullets = []
+        weak_bullets = []
+
+        # Find metrics in whole text
+        total_metrics = 0
+        for pattern in cls.METRIC_PATTERNS:
+            matches = re.findall(pattern, raw_text, re.IGNORECASE)
+            total_metrics += len(matches)
+
+        for line in bullet_lines:
+            words = re.findall(r"\b[a-zA-ZáéíóúÁÉÍÓÚñÑ]+\b", line.lower())
+            first_words = words[:3] if words else []
+            has_action = any(v in cls.ACTION_VERBS for v in first_words)
+            has_metric = any(re.search(pat, line, re.IGNORECASE) for pat in cls.METRIC_PATTERNS)
+
+            if has_action:
+                action_verb_count += 1
+
+            if has_action and has_metric:
+                star_like_bullets.append(line)
+            elif not has_action and not has_metric:
+                if len(weak_bullets) < 5:
+                    weak_bullets.append(line)
+
+        # Scoring logic
+        # 1. Action verbs ratio
+        total_sample = max(1, len(bullet_lines))
+        action_ratio = min(1.0, action_verb_count / min(10, total_sample))
+        # 2. Metric count: 5+ metrics is great
+        metric_ratio = min(1.0, total_metrics / 5.0)
+
+        score = int((action_ratio * 50) + (metric_ratio * 50))
+        final_score = max(15, min(100, score))
+
+        return final_score, {
+            "total_metrics_found": total_metrics,
+            "action_verbs_count": action_verb_count,
+            "star_bullets_count": len(star_like_bullets),
+            "weak_bullets_examples": weak_bullets[:3],
+            "action_verb_coverage": f"{int(action_ratio * 100)}%",
+            "metrics_coverage": f"{int(metric_ratio * 100)}%"
+        }
+
+    @classmethod
+    def _calculate_format(cls, resume_parse: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        score = 100
+        raw_text = resume_parse.get("raw_text", "")
+        word_count = len(raw_text.split())
+        pages = resume_parse.get("total_pages", 1)
+
+        # Word count guideline: 350 to 900 words is ideal
+        if word_count < 250:
+            score -= 20
+        elif word_count > 1200:
+            score -= 15
+
+        if pages > 2:
+            score -= (pages - 2) * 15
+
+        final_score = max(20, min(100, score))
+        return final_score, {
+            "word_count": word_count,
+            "pages": pages,
+            "ideal_word_count_range": "350 - 900 palabras"
+        }
+
+    @classmethod
+    def _calculate_keywords(cls, resume_text: str, job_text: str) -> Tuple[int, Dict[str, Any]]:
+        if not job_text.strip():
+            return 80, {
+                "matched": [],
+                "missing": [],
+                "coverage_pct": 100,
+                "note": "No se proporcionó oferta de empleo. Puntuación neutra basada en estándares técnicos."
+            }
+
+        job_lower = job_text.lower()
+        resume_lower = resume_text.lower()
+
+        # Extract candidates from Job
+        # 1. Tech keywords
+        job_keywords = set()
+        for kw in cls.COMMON_TECH_KEYWORDS:
+            if re.search(rf"\b{re.escape(kw)}\b", job_lower):
+                job_keywords.add(kw)
+
+        # 2. Capitalized phrases & acronyms (e.g. AWS, CI/CD, SaaS, B2B, OKRs, SEO)
+        acronyms = re.findall(r"\b[A-Z]{2,6}\b", job_text)
+        for acr in acronyms:
+            if len(acr) >= 2 and acr.lower() not in {"the", "and", "for", "with", "una", "los", "las", "del"}:
+                job_keywords.add(acr.lower())
+
+        # If job didn't match known tech list, extract most frequent nouns/tokens (>4 chars)
+        if len(job_keywords) < 5:
+            tokens = re.findall(r"\b[a-záéíóúñ]{4,15}\b", job_lower)
+            stopwords = {"para", "como", "sobre", "entre", "este", "esta", "estos", "estas", "todos", "todas", "con", "del", "por", "que", "los", "las", "una", "uno", "requisitos", "experiencia", "empresa", "trabajo", "equipo", "nuestro", "nuestra", "buscamos", "puesto", "candidato", "candidata", "skills", "experience", "required", "responsibilities", "about", "with", "from", "will", "have"}
+            freq = {}
+            for t in tokens:
+                if t not in stopwords:
+                    freq[t] = freq.get(t, 0) + 1
+            sorted_tokens = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+            for t, count in sorted_tokens[:10]:
+                job_keywords.add(t)
+
+        matched = []
+        missing = []
+
+        for kw in sorted(job_keywords):
+            if re.search(rf"\b{re.escape(kw)}\b", resume_lower):
+                matched.append(kw)
+            else:
+                missing.append(kw)
+
+        total_kw = max(1, len(job_keywords))
+        coverage = len(matched) / total_kw
+        score = int(coverage * 100)
+
+        return score, {
+            "total_extracted_keywords": len(job_keywords),
+            "matched_keywords": matched,
+            "missing_keywords": missing,
+            "coverage_pct": int(coverage * 100)
+        }
+
+    @classmethod
+    def _generate_priority_recommendations(
+        cls,
+        parseability: int,
+        keyword_score: int,
+        impact_score: int,
+        format_score: int,
+        kw_details: Dict[str, Any],
+        impact_details: Dict[str, Any],
+        formatting_issues: List[Dict[str, Any]]
+    ) -> List[Dict[str, str]]:
+        recs = []
+
+        # 1. Format/Parseability criticals
+        for issue in formatting_issues:
+            if issue.get("severity") == "high":
+                recs.append({
+                    "category": "Estructura & ATS",
+                    "priority": "Alta",
+                    "action": issue.get("message")
+                })
+
+        # 2. Missing keywords
+        missing_kw = kw_details.get("missing_keywords", [])
+        if missing_kw:
+            recs.append({
+                "category": "Palabras Clave",
+                "priority": "Alta",
+                "action": f"Incorpora estas keywords esenciales de la oferta: {', '.join(missing_kw[:6])}."
+            })
+
+        # 3. Impact & metrics
+        metrics_found = impact_details.get("total_metrics_found", 0)
+        if metrics_found < 3:
+            recs.append({
+                "category": "Impacto STAR",
+                "priority": "Media",
+                "action": "Añade métricas cuantificables (%, €, volumen de usuarios, tiempos reducidos) en tus viñetas de experiencia."
+            })
+
+        # 4. Action verbs
+        weak_examples = impact_details.get("weak_bullets_examples", [])
+        if weak_examples:
+            recs.append({
+                "category": "Verbos de Acción",
+                "priority": "Media",
+                "action": "Empieza cada viñeta con un verbo de acción potente (ej. 'Lideré', 'Automaticé', 'Optimizé') en lugar de descripciones pasivas de tareas."
+            })
+
+        return recs[:5]
