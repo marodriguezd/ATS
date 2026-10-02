@@ -1,7 +1,17 @@
 # 📖 Acerca de ATS Resume Suite (ABOUT)
 
-> 🚀 **Probar la Web App en Vivo (GitHub Pages)**: [https://marodriguezd.github.io/ATS/](https://marodriguezd.github.io/ATS/)  
-> 💻 **Código Fuente (GitHub)**: [https://github.com/marodriguezd/ATS](https://github.com/marodriguezd/ATS)
+<div align="center">
+
+## 🚀 [CLIC AQUÍ PARA ABRIR LA APP EN VIVO](https://marodriguezd.github.io/ATS/)
+
+[![Abrir ATS Resume Suite](https://img.shields.io/badge/ACCESO%20DIRECTO%20WEB-https%3A%2F%2Fmarodriguezd.github.io%2FATS%2F-059669?style=for-the-badge&logo=googlechrome&logoColor=white)](https://marodriguezd.github.io/ATS/)
+[![Ver Código en GitHub](https://img.shields.io/badge/REPOSITORIO%20GITHUB-marodriguezd%2FATS-2563eb?style=for-the-badge&logo=github)](https://github.com/marodriguezd/ATS)
+
+🔗 **URL Directa**: [https://marodriguezd.github.io/ATS/](https://marodriguezd.github.io/ATS/)
+
+</div>
+
+---
 
 ## ¿Por qué existe esta herramienta?
 
@@ -118,3 +128,12 @@ La suite incorpora casos de estudio reales para validar y comparar currículums:
 - **Backend**: FastAPI (Python 3.12, Uvicorn, SQLAlchemy, SQLite).
 - **Parsers y Motores**: `pdfplumber`, `python-docx`, `reportlab`.
 - **Despliegue**: GitHub Pages (Frontend estático con soporte offline) + GitHub Actions.
+
+---
+
+## 🚀 Probar la Suite Ahora
+
+Haz clic en el siguiente enlace para analizar o construir tu CV 100% apto para filtros ATS:
+
+👉 **[https://marodriguezd.github.io/ATS/](https://marodriguezd.github.io/ATS/)**
+
