@@ -12,18 +12,46 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  Wand2,
+  CheckCircle2,
 } from "lucide-react";
 import { api, AuditResult } from "@/lib/api";
 import { ScoreGauge } from "./ScoreGauge";
 import { RawAtsView } from "./RawAtsView";
 import { StarOptimizer } from "./StarOptimizer";
 
-const SAMPLE_JOB = `Buscamos un Senior Backend Developer con experiencia sólida en Python, FastAPI, Docker, PostgreSQL y AWS.
+const JOB_TEMPLATES = [
+  {
+    name: "Backend Junior / Mid (Python, Java, SQL, Docker)",
+    text: `Buscamos un Desarrollador Backend Junior / Python con conocimientos de Java, Spring Boot, APIs REST, SQL y Docker.
+Requisitos:
+- Formación en DAM, DAW o Ingeniería Informática.
+- Experiencia en desarrollo con Python o Java (Spring Boot).
+- Manejo de bases de datos relacionales (PostgreSQL o MySQL).
+- Conocimientos de Git, Docker y entornos Linux.
+- Valorable interés o formación en Cloud (AWS) y Data / Inteligencia Artificial.`
+  },
+  {
+    name: "Senior Backend (Python, FastAPI, AWS, Redis, CI/CD)",
+    text: `Buscamos un Senior Backend Developer con experiencia sólida en Python, FastAPI, Docker, PostgreSQL y AWS.
 Requisitos:
 - Más de 4 años de experiencia en desarrollo backend con microservicios.
 - Dominio de bases de datos relacionales (PostgreSQL) y caching con Redis.
 - Experiencia demostrable en despliegues en AWS y automatización de pipelines CI/CD con GitHub Actions.
-- Buenas prácticas de arquitectura limpia, testing automatizado (Pytest) y metodologías ágiles (Scrum).`;
+- Buenas prácticas de arquitectura limpia, testing automatizado (Pytest) y metodologías ágiles (Scrum).`
+  },
+  {
+    name: "Data Analyst & IA (Python, ML, LLMs, AWS)",
+    text: `Buscamos un Ingeniero de Datos e IA Junior / Mid con dominio de Python, Pandas, NumPy, Machine Learning y despliegue en la nube.
+Requisitos:
+- Experiencia en Python, manipulación de datos con Pandas/NumPy y bases de datos SQL/NoSQL.
+- Conocimientos de modelos de Machine Learning, Deep Learning y LLMs / IA Generativa.
+- Familiaridad con Docker, Git y servicios de AWS (S3, Lambda, EC2).
+- Capacidad analítica y resolución de problemas técnicos.`
+  }
+];
+
+const SAMPLE_JOB = JOB_TEMPLATES[0].text;
 
 const SAMPLE_CV_TEXT = `CARLOS MENDOZA
 carlos.mendoza@email.com | +34 612 345 678 | Madrid, España | linkedin.com/in/carlosmendoza
@@ -55,8 +83,31 @@ export const AuditView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [rawAtsView, setRawAtsView] = useState<string>("");
+  const [untangledView, setUntangledView] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"overview" | "keywords" | "raw" | "star">("overview");
   const [savedResumes, setSavedResumes] = useState<any[]>([]);
+  const [isAutoFixing, setIsAutoFixing] = useState(false);
+  const [autoFixSuccess, setAutoFixSuccess] = useState(false);
+
+  const handleAutoFix = async () => {
+    if (!resumeId) return;
+    setIsAutoFixing(true);
+    try {
+      const fixRes = await api.autoFix(resumeId, jobText);
+      setResumeId(fixRes.new_resume_id);
+      setAuditResult(fixRes.perfected_score);
+      setRawAtsView(fixRes.raw_ats_view);
+      setUntangledView(fixRes.raw_ats_view);
+      setAutoFixSuccess(true);
+      await fetchSavedResumes();
+      setTimeout(() => setAutoFixSuccess(false), 5000);
+    } catch (e) {
+      console.error(e);
+      alert("Error al auto-corregir el CV.");
+    } finally {
+      setIsAutoFixing(false);
+    }
+  };
 
   const fetchSavedResumes = async () => {
     try {
@@ -236,17 +287,26 @@ export const AuditView: React.FC = () => {
 
           {/* Job Description Box */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center space-x-2">
-                <Briefcase className="w-4 h-4 text-emerald-600" />
-                <span>2. Oferta de Empleo Objetivo</span>
-              </label>
-              <button
-                onClick={() => setJobText(SAMPLE_JOB)}
-                className="text-[11px] text-emerald-700 hover:underline font-semibold"
-              >
-                Cargar plantilla
-              </button>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center space-x-2">
+                  <Briefcase className="w-4 h-4 text-emerald-600" />
+                  <span>2. Oferta de Empleo Objetivo</span>
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-1 mb-2">
+                {JOB_TEMPLATES.map((tpl, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setJobText(tpl.text)}
+                    className="text-[10px] bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 px-2 py-1 rounded-md transition-colors font-medium"
+                  >
+                    {tpl.name}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <textarea
@@ -322,6 +382,44 @@ export const AuditView: React.FC = () => {
                 score={auditResult.overall_score}
                 breakdown={auditResult.breakdown}
               />
+
+              {/* 1-Click Auto-Fix Action Banner */}
+              <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 text-white p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 border border-emerald-600/50">
+                <div className="flex items-center space-x-3.5">
+                  <div className="bg-white/20 p-2.5 rounded-xl shrink-0">
+                    <Sparkles className="w-6 h-6 text-amber-300" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-200">
+                      Solución en 1 Clic
+                    </div>
+                    <div className="text-sm font-bold mt-0.5">
+                      {auditResult.overall_score >= 80
+                        ? "¡Este CV ya está optimizado para superar filtros ATS!"
+                        : "¿Quieres arreglar automáticamente este CV para obtener 100% de compatibilidad?"}
+                    </div>
+                    <div className="text-xs text-emerald-100/90 mt-0.5">
+                      Reorganiza a 1 columna continua, normaliza encabezados y convierte viñetas al formato Google STAR.
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAutoFix}
+                  disabled={isAutoFixing}
+                  className="shrink-0 bg-white hover:bg-emerald-50 text-emerald-950 font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-xs flex items-center space-x-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <Wand2 className="w-4 h-4 text-emerald-600" />
+                  <span>{isAutoFixing ? "Optimizando CV..." : "✨ Convertir a 100% ATS Friendly"}</span>
+                </button>
+              </div>
+
+              {autoFixSuccess && (
+                <div className="p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-bold flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                  <span>¡CV corregido con éxito! Se ha creado una nueva versión con 1 columna continua, métricas STAR y parseabilidad 100%.</span>
+                </div>
+              )}
 
               {/* Sub-tabs bar */}
               <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl">
@@ -446,10 +544,32 @@ export const AuditView: React.FC = () => {
               {/* Sub-tab 2: Keywords Match */}
               {activeTab === "keywords" && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-6">
+                  {/* Keywords in Experience */}
+                  {((auditResult.keyword_details as any).in_experience || []).length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wide flex items-center space-x-1.5 mb-2">
+                        <CheckCircle className="w-4 h-4 text-emerald-600" />
+                        <span>Acreditadas en tu Experiencia Laboral (Mayor Ponderación ATS)</span>
+                      </h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {((auditResult.keyword_details as any).in_experience || []).map((kw: string, i: number) => (
+                          <span
+                            key={i}
+                            className="bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs px-2.5 py-1 rounded-full font-bold flex items-center space-x-1"
+                          >
+                            <span>✓</span>
+                            <span>{kw}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Keywords in Skills or General */}
                   <div>
-                    <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wide flex items-center space-x-1.5 mb-2">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center space-x-1.5 mb-2">
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
-                      <span>Palabras Clave Encontradas en tu CV ({auditResult.keyword_details.matched_keywords.length})</span>
+                      <span>Todas las Keywords Detectadas ({auditResult.keyword_details.matched_keywords.length})</span>
                     </h3>
                     <div className="flex flex-wrap gap-1.5">
                       {auditResult.keyword_details.matched_keywords.map((kw, i) => (
@@ -464,6 +584,7 @@ export const AuditView: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Missing Keywords */}
                   <div className="border-t border-slate-100 pt-4">
                     <h3 className="text-xs font-bold text-rose-800 uppercase tracking-wide flex items-center space-x-1.5 mb-2">
                       <XCircle className="w-4 h-4 text-rose-600" />
@@ -491,6 +612,7 @@ export const AuditView: React.FC = () => {
               {activeTab === "raw" && (
                 <RawAtsView
                   rawText={rawAtsView}
+                  untangledText={untangledView || rawAtsView}
                   isMultiColumn={auditResult.formatting_issues.some((i) => i.type === "multi_column_detected")}
                   hasTables={auditResult.formatting_issues.some((i) => i.type === "table_detected")}
                 />

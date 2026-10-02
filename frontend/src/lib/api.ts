@@ -123,6 +123,16 @@ export const api = {
     return res.json();
   },
 
+  async autoFix(resume_id: number, job_text?: string) {
+    const res = await fetch(`${API_BASE}/audit/auto-fix`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resume_id, job_text }),
+    });
+    if (!res.ok) throw new Error("Error al auto-corregir CV");
+    return res.json();
+  },
+
   async rewriteBullet(bullet: string, role_context?: string, target_keywords?: string[]) {
     const res = await fetch(`${API_BASE}/audit/rewrite-bullet`, {
       method: "POST",

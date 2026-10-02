@@ -1,5 +1,6 @@
 import re
 from typing import Dict, Any, List, Set, Tuple
+from app.core.synonyms import match_keyword_semantically, get_canonical, TECH_SYNONYMS
 
 class ATSScorer:
     """
@@ -58,7 +59,7 @@ class ATSScorer:
         format_score, format_details = cls._calculate_format(resume_parse)
 
         # 4. Keyword Match Score (against job description if provided)
-        keyword_score, kw_details = cls._calculate_keywords(raw_text, job_text)
+        keyword_score, kw_details = cls._calculate_keywords(resume_parse, job_text)
 
         # Overall weighted score
         if job_text.strip():
@@ -215,38 +216,47 @@ class ATSScorer:
         }
 
     @classmethod
-    def _calculate_keywords(cls, resume_text: str, job_text: str) -> Tuple[int, Dict[str, Any]]:
+    def _calculate_keywords(cls, resume_input: Any, job_text: str) -> Tuple[int, Dict[str, Any]]:
         if not job_text.strip():
             return 80, {
-                "matched": [],
-                "missing": [],
+                "matched_keywords": [],
+                "missing_keywords": [],
+                "in_experience": [],
+                "in_skills_only": [],
                 "coverage_pct": 100,
                 "note": "No se proporcionó oferta de empleo. Puntuación neutra basada en estándares técnicos."
             }
 
+        if isinstance(resume_input, dict):
+            raw_text = resume_input.get("raw_text", "")
+            sections = resume_input.get("sections", {})
+        else:
+            raw_text = str(resume_input)
+            sections = {}
+
+        exp_text = (sections.get("experience", "") + " " + sections.get("projects", "")).lower()
+        skills_text = (sections.get("skills", "") + " " + sections.get("education", "")).lower()
         job_lower = job_text.lower()
-        resume_lower = resume_text.lower()
 
         # Extract candidates from Job
-        # 1. Tech keywords
         job_keywords = set()
         for kw in cls.COMMON_TECH_KEYWORDS:
             if re.search(rf"\b{re.escape(kw)}\b", job_lower):
                 job_keywords.add(kw)
 
-        # 2. Capitalized phrases & acronyms (e.g. AWS, CI/CD, SaaS, B2B, OKRs, SEO)
+        # Capitalized phrases & acronyms
         acronyms = re.findall(r"\b[A-Z]{2,6}\b", job_text)
+        stopwords = {"the", "and", "for", "with", "una", "los", "las", "del", "por", "que", "para", "con"}
         for acr in acronyms:
-            if len(acr) >= 2 and acr.lower() not in {"the", "and", "for", "with", "una", "los", "las", "del"}:
+            if len(acr) >= 2 and acr.lower() not in stopwords:
                 job_keywords.add(acr.lower())
 
-        # If job didn't match known tech list, extract most frequent nouns/tokens (>4 chars)
         if len(job_keywords) < 5:
             tokens = re.findall(r"\b[a-záéíóúñ]{4,15}\b", job_lower)
-            stopwords = {"para", "como", "sobre", "entre", "este", "esta", "estos", "estas", "todos", "todas", "con", "del", "por", "que", "los", "las", "una", "uno", "requisitos", "experiencia", "empresa", "trabajo", "equipo", "nuestro", "nuestra", "buscamos", "puesto", "candidato", "candidata", "skills", "experience", "required", "responsibilities", "about", "with", "from", "will", "have"}
+            ignored = {"para", "como", "sobre", "entre", "este", "esta", "estos", "estas", "todos", "todas", "con", "del", "por", "que", "los", "las", "una", "uno", "requisitos", "experiencia", "empresa", "trabajo", "equipo", "nuestro", "nuestra", "buscamos", "puesto", "candidato", "candidata", "skills", "experience", "required", "responsibilities", "about", "with", "from", "will", "have"}
             freq = {}
             for t in tokens:
-                if t not in stopwords:
+                if t not in ignored:
                     freq[t] = freq.get(t, 0) + 1
             sorted_tokens = sorted(freq.items(), key=lambda x: x[1], reverse=True)
             for t, count in sorted_tokens[:10]:
@@ -254,22 +264,38 @@ class ATSScorer:
 
         matched = []
         missing = []
+        in_experience = []
+        in_skills_only = []
+        score_accumulator = 0.0
 
         for kw in sorted(job_keywords):
-            if re.search(rf"\b{re.escape(kw)}\b", resume_lower):
+            # Semantic synonym match
+            in_exp = match_keyword_semantically(kw, exp_text)
+            in_sk = match_keyword_semantically(kw, skills_text)
+            in_raw = match_keyword_semantically(kw, raw_text)
+
+            if in_exp:
                 matched.append(kw)
+                in_experience.append(kw)
+                score_accumulator += 1.0
+            elif in_sk or in_raw:
+                matched.append(kw)
+                in_skills_only.append(kw)
+                score_accumulator += 0.85
             else:
                 missing.append(kw)
 
         total_kw = max(1, len(job_keywords))
-        coverage = len(matched) / total_kw
-        score = int(coverage * 100)
+        coverage_pct = int(min(100, (len(matched) / total_kw) * 100))
+        score = int(min(100, (score_accumulator / total_kw) * 100))
 
         return score, {
             "total_extracted_keywords": len(job_keywords),
             "matched_keywords": matched,
             "missing_keywords": missing,
-            "coverage_pct": int(coverage * 100)
+            "in_experience": in_experience,
+            "in_skills_only": in_skills_only,
+            "coverage_pct": coverage_pct
         }
 
     @classmethod

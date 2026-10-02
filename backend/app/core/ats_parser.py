@@ -5,6 +5,8 @@ import pdfplumber
 import pypdf
 import docx
 
+from app.core.column_untangler import ColumnUntangler
+
 class ATSParser:
     """
     Simulates real ATS parsing engines (Workday, Taleo, Greenhouse, iCIMS).
@@ -28,7 +30,8 @@ class ATSParser:
 
     @classmethod
     def parse_pdf(cls, file_bytes: bytes) -> Dict[str, Any]:
-        raw_text_pages = []
+        naive_text_pages = []
+        untangled_text_pages = []
         formatting_issues = []
         is_multi_column = False
         has_tables = False
@@ -49,42 +52,37 @@ class ATSParser:
                             "page": page_idx + 1
                         })
 
-                    # Check for true multi-column layout
-                    words = page.extract_words()
-                    if words:
-                        mid_x = page.width / 2
-                        left_words = [w for w in words if w["x1"] < mid_x - 20]
-                        right_words = [w for w in words if w["x0"] > mid_x + 20]
-                        # Words occupying the central gutter (mid_x - 25 to mid_x + 25)
-                        central_words = [w for w in words if not (w["x1"] < mid_x - 25 or w["x0"] > mid_x + 25)]
+                    # Run spatial column untangler
+                    p_naive, p_untangled, p_is_multi, _ = ColumnUntangler.untangle_page(page)
+                    if p_is_multi:
+                        is_multi_column = True
+                        formatting_issues.append({
+                            "type": "multi_column_detected",
+                            "severity": "high",
+                            "message": f"Página {page_idx + 1}: Posible diseño a doble columna. Los parsers ATS suelen mezclar el texto de izquierda a derecha de forma incoherente.",
+                            "page": page_idx + 1
+                        })
 
-                        # In true 2-column layouts, both columns are dense (>25 words) and the central gutter is empty (<5 words)
-                        if len(left_words) > 25 and len(right_words) > 25 and len(central_words) < 5:
-                            is_multi_column = True
-                            formatting_issues.append({
-                                "type": "multi_column_detected",
-                                "severity": "high",
-                                "message": f"Página {page_idx + 1}: Posible diseño a doble columna. Los parsers ATS suelen mezclar el texto de izquierda a derecha de forma incoherente.",
-                                "page": page_idx + 1
-                            })
-
-                    # Extract plain text as a standard ATS stream reader would
-                    page_text = (page.extract_text(layout=False) or "").replace("(cid:127)", "• ")
-                    raw_text_pages.append(page_text)
+                    naive_text_pages.append(p_naive)
+                    untangled_text_pages.append(p_untangled)
 
         except Exception as e:
             # Fallback to pypdf
             reader = pypdf.PdfReader(io.BytesIO(file_bytes))
             total_pages = len(reader.pages)
             for page in reader.pages:
-                raw_text_pages.append(page.extract_text() or "")
+                t = (page.extract_text() or "").replace("(cid:127)", "• ")
+                naive_text_pages.append(t)
+                untangled_text_pages.append(t)
             formatting_issues.append({
                 "type": "parser_warning",
                 "severity": "medium",
                 "message": f"Lectura asistida por fallback: {str(e)}"
             })
 
-        full_raw_text = "\n\n".join(raw_text_pages)
+        full_naive_text = "\n\n".join(naive_text_pages)
+        full_untangled_text = "\n\n".join(untangled_text_pages)
+        effective_text = full_untangled_text if is_multi_column else full_naive_text
 
         # Check total pages length
         if total_pages > 2:
@@ -95,9 +93,9 @@ class ATSParser:
                 "page": total_pages
             })
 
-        # Structured parsing
-        parsed_sections = cls._extract_sections(full_raw_text)
-        contact_info = cls._extract_contact_info(full_raw_text)
+        # Structured parsing using spatially untangled text
+        parsed_sections = cls._extract_sections(effective_text)
+        contact_info = cls._extract_contact_info(effective_text)
 
         # Contact check
         if not contact_info.get("email"):
@@ -114,8 +112,9 @@ class ATSParser:
             })
 
         return {
-            "raw_text": full_raw_text,
-            "raw_ats_view": full_raw_text.strip(),
+            "raw_text": effective_text,
+            "raw_ats_view": full_naive_text.strip(),
+            "untangled_view": full_untangled_text.strip(),
             "total_pages": total_pages,
             "is_multi_column": is_multi_column,
             "has_tables": has_tables,

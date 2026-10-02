@@ -106,15 +106,16 @@ def export_resume(resume_id: int, format_type: str, db: Session = Depends(get_db
 
     export_data = {
         "full_name": parsed.get("full_name") or resume.title.replace(".pdf", "").replace(".docx", ""),
-        "email": contact.get("email"),
-        "phone": contact.get("phone"),
-        "linkedin": contact.get("linkedin"),
-        "github": contact.get("github"),
-        "location": contact.get("location"),
-        "summary": sections.get("summary") or parsed.get("summary", ""),
+        "email": parsed.get("email") or contact.get("email"),
+        "phone": parsed.get("phone") or contact.get("phone"),
+        "linkedin": parsed.get("linkedin") or contact.get("linkedin"),
+        "github": parsed.get("github") or contact.get("github"),
+        "location": parsed.get("location") or contact.get("location"),
+        "summary": parsed.get("summary") or sections.get("summary", ""),
         "experience": parsed.get("experience", []),
         "education": parsed.get("education", []),
-        "skills": parsed.get("skills") or [s.strip() for s in sections.get("skills", "").split(",") if s.strip()]
+        "skills": parsed.get("skills") or [s.strip() for s in sections.get("skills", "").split(",") if s.strip()],
+        "certifications": parsed.get("certifications", [])
     }
 
     # If experience list is empty but text section exists

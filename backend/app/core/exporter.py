@@ -215,10 +215,12 @@ class ATSExporter:
             if cv_data.get(field):
                 contact_items.append(cv_data[field])
 
-        p_contact = doc.add_paragraph(" | ".join(contact_items))
-        p_contact.runs[0].font.name = "Arial"
-        p_contact.runs[0].font.size = Pt(9.5)
-        p_contact.runs[0].font.color.rgb = RGBColor(80, 80, 80)
+        if contact_items:
+            p_contact = doc.add_paragraph(" | ".join(contact_items))
+            if p_contact.runs:
+                p_contact.runs[0].font.name = "Arial"
+                p_contact.runs[0].font.size = Pt(9.5)
+                p_contact.runs[0].font.color.rgb = RGBColor(80, 80, 80)
 
         # Summary
         if cv_data.get("summary"):
