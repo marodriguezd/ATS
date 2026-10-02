@@ -215,6 +215,94 @@ class ATSScorer:
             "ideal_word_count_range": "350 - 900 palabras"
         }
 
+    UNIVERSAL_STOPWORDS = {
+        # Spanish stopwords & generic filler
+        "de", "la", "el", "en", "y", "a", "los", "del", "se", "las", "por", "un", "para", "con", "no", "una",
+        "su", "al", "lo", "como", "mas", "pero", "sus", "le", "ya", "o", "este", "si", "porque", "esta",
+        "entre", "cuando", "muy", "sin", "sobre", "tambien", "me", "hasta", "hay", "donde", "quien",
+        "desde", "todo", "nos", "durante", "todos", "uno", "les", "ni", "contra", "otros", "ese", "eso",
+        "ante", "ellos", "e", "esto", "mi", "antes", "algunos", "que", "unos", "yo", "otro", "otras",
+        "otra", "tanto", "esa", "estos", "mucho", "quienes", "nada", "muchos", "cual", "poco",
+        "ella", "estar", "estas", "algunas", "algo", "nosotros", "mis", "tus", "nuestro", "nuestra",
+        "nuestros", "nuestras", "somos", "estamos", "tienen", "tenemos", "puedes", "podras", "daras",
+        "cuidaras", "realizaras", "aseguraras", "uniras", "brindamos", "buscamos", "ofrecemos", "esperamos",
+        "busqueda", "puesto", "empresa", "posiciones", "procedimientos", "proceso", "propios", "propias",
+        "ano", "anos", "mes", "meses", "dia", "dias", "horas", "procedimiento", "establecidos",
+        "casi", "territorio", "nacional", "internacional", "plena", "pleno", "expansion",
+        "maxima", "linea", "siente", "enamorate", "unico", "unica", "cambio", "forma", "compromiso",
+        "motivacion", "equipo", "parte", "dinamico", "inclusivo", "dentro", "nivel", "disfrutar", "club",
+        "servicio", "totalmente", "gratuito", "caso", "positivamente", "tener", "relacionada", "asi",
+        "buenas", "habilidades", "interes", "trabajar", "dudes", "inscribete", "esperando", "posicion",
+        # English
+        "the", "and", "to", "of", "a", "in", "is", "that", "for", "it", "as", "was", "with", "on", "at",
+        "by", "this", "be", "are", "from", "or", "have", "an", "they", "which", "one", "you", "were", "her",
+        "all", "she", "there", "would", "their", "we", "him", "been", "has", "when", "who", "will", "more"
+    }
+
+    UNIVERSAL_KEY_PHRASES = [
+        # Retail, Operations & Soft Skills
+        "atencion al cliente", "trabajo en equipo", "sala de ventas", "jornada parcial",
+        "orientacion al cliente", "reposicion de mercancia", "gestion de stock", "control de inventario",
+        "cierre de caja", "arqueo de caja", "orden y limpieza",
+        # Tech & Engineering
+        "spring boot", "machine learning", "deep learning", "inteligencia artificial",
+        "bases de datos", "desarrollo web", "apis rest", "pruebas unitarias", "control de versiones",
+        "integracion continua", "arquitectura limpia", "desarrollo de aplicaciones multiplataforma",
+        "desarrollo de aplicaciones web"
+    ]
+
+    UNIVERSAL_PRIORITY_TERMS = {
+        # Retail & Logistics
+        "retail", "cajero", "cajeros", "cajera", "cajeras", "reponedor", "reponedores",
+        "caja", "almacen", "tienda", "tiendas", "mercancia", "comercio", "ingles", "idiomas",
+        "dinamismo", "limpieza", "ventas", "alimentacion",
+        # Tech
+        "python", "java", "react", "docker", "sql", "linux", "aws", "git", "fastapi", "kotlin",
+        "dam", "daw", "asir", "microservicios", "postgresql", "mysql", "kubernetes", "typescript"
+    }
+
+    @classmethod
+    def _extract_job_keywords(cls, job_text: str, max_keywords: int = 14) -> List[str]:
+        from app.core.synonyms import strip_accents
+        norm_job = strip_accents(job_text.lower())
+
+        found_phrases = []
+        for phrase in cls.UNIVERSAL_KEY_PHRASES:
+            phrase_norm = strip_accents(phrase)
+            if re.search(rf"\b{re.escape(phrase_norm)}\b", norm_job):
+                found_phrases.append(phrase)
+
+        # Word frequency analysis with boundary check
+        words = re.findall(r"\b[a-z]{3,20}\b", norm_job)
+        word_freq = {}
+        for w in words:
+            if w not in cls.UNIVERSAL_STOPWORDS and len(w) > 3:
+                # Skip if already part of an extracted phrase
+                if any(w in p for p in found_phrases):
+                    continue
+                word_freq[w] = word_freq.get(w, 0) + 1
+
+        for w in list(word_freq.keys()):
+            if w in cls.UNIVERSAL_PRIORITY_TERMS:
+                word_freq[w] *= 3
+
+        # Add tech keywords explicitly if matched with word boundary
+        for kw in cls.COMMON_TECH_KEYWORDS:
+            if re.search(rf"\b{re.escape(kw)}\b", norm_job):
+                word_freq[kw] = word_freq.get(kw, 0) + 5
+
+        # Acronyms (e.g. AWS, DAM, DAW, SQL) strictly with word boundaries
+        acronyms = re.findall(r"\b[A-Z]{2,6}\b", job_text)
+        for acr in acronyms:
+            acr_low = acr.lower()
+            if acr_low not in cls.UNIVERSAL_STOPWORDS:
+                word_freq[acr_low] = word_freq.get(acr_low, 0) + 4
+
+        sorted_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)
+        top_singles = [w for w, count in sorted_words[:(max_keywords - len(found_phrases))]]
+
+        return found_phrases + top_singles
+
     @classmethod
     def _calculate_keywords(cls, resume_input: Any, job_text: str) -> Tuple[int, Dict[str, Any]]:
         if not job_text.strip():
@@ -236,31 +324,9 @@ class ATSScorer:
 
         exp_text = (sections.get("experience", "") + " " + sections.get("projects", "")).lower()
         skills_text = (sections.get("skills", "") + " " + sections.get("education", "")).lower()
-        job_lower = job_text.lower()
 
-        # Extract candidates from Job
-        job_keywords = set()
-        for kw in cls.COMMON_TECH_KEYWORDS:
-            if re.search(rf"\b{re.escape(kw)}\b", job_lower):
-                job_keywords.add(kw)
-
-        # Capitalized phrases & acronyms
-        acronyms = re.findall(r"\b[A-Z]{2,6}\b", job_text)
-        stopwords = {"the", "and", "for", "with", "una", "los", "las", "del", "por", "que", "para", "con"}
-        for acr in acronyms:
-            if len(acr) >= 2 and acr.lower() not in stopwords:
-                job_keywords.add(acr.lower())
-
-        if len(job_keywords) < 5:
-            tokens = re.findall(r"\b[a-záéíóúñ]{4,15}\b", job_lower)
-            ignored = {"para", "como", "sobre", "entre", "este", "esta", "estos", "estas", "todos", "todas", "con", "del", "por", "que", "los", "las", "una", "uno", "requisitos", "experiencia", "empresa", "trabajo", "equipo", "nuestro", "nuestra", "buscamos", "puesto", "candidato", "candidata", "skills", "experience", "required", "responsibilities", "about", "with", "from", "will", "have"}
-            freq = {}
-            for t in tokens:
-                if t not in ignored:
-                    freq[t] = freq.get(t, 0) + 1
-            sorted_tokens = sorted(freq.items(), key=lambda x: x[1], reverse=True)
-            for t, count in sorted_tokens[:10]:
-                job_keywords.add(t)
+        # Dynamic extraction from job text
+        extracted_keywords = cls._extract_job_keywords(job_text)
 
         matched = []
         missing = []
@@ -268,8 +334,7 @@ class ATSScorer:
         in_skills_only = []
         score_accumulator = 0.0
 
-        for kw in sorted(job_keywords):
-            # Semantic synonym match
+        for kw in extracted_keywords:
             in_exp = match_keyword_semantically(kw, exp_text)
             in_sk = match_keyword_semantically(kw, skills_text)
             in_raw = match_keyword_semantically(kw, raw_text)
@@ -281,16 +346,16 @@ class ATSScorer:
             elif in_sk or in_raw:
                 matched.append(kw)
                 in_skills_only.append(kw)
-                score_accumulator += 0.85
+                score_accumulator += 0.80
             else:
                 missing.append(kw)
 
-        total_kw = max(1, len(job_keywords))
+        total_kw = max(1, len(extracted_keywords))
         coverage_pct = int(min(100, (len(matched) / total_kw) * 100))
         score = int(min(100, (score_accumulator / total_kw) * 100))
 
         return score, {
-            "total_extracted_keywords": len(job_keywords),
+            "total_extracted_keywords": len(extracted_keywords),
             "matched_keywords": matched,
             "missing_keywords": missing,
             "in_experience": in_experience,
@@ -319,6 +384,16 @@ class ATSScorer:
                     "priority": "Alta",
                     "action": issue.get("message")
                 })
+
+        # 1. Sector/Role Mismatch Warning
+        total_kw = kw_details.get("total_extracted_keywords", 0)
+        coverage = kw_details.get("coverage_pct", 100)
+        if total_kw >= 4 and coverage < 35:
+            recs.append({
+                "category": "Alineación de Perfil",
+                "priority": "Crítica",
+                "action": "Desajuste sectorial detectado: El perfil del CV no coincide con los requisitos operativos de esta vacante. Destaca competencias transferibles (trabajo en equipo, organización, dinamismo, atención al cliente) para optar a este puesto."
+            })
 
         # 2. Missing keywords
         missing_kw = kw_details.get("missing_keywords", [])

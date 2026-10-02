@@ -282,51 +282,168 @@ const SYNONYMS: Record<string, string[]> = {
   rest: ["rest", "api rest", "apis restful", "restful"]
 };
 
-export function standaloneAudit(resume: StandaloneResume, jobText: string) {
-  const normResume = resume.raw_text.toLowerCase();
-  const normJob = (jobText || "").toLowerCase();
+function stripAccents(str: string): string {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
-  // Extract job keywords
-  const candidateKeywords = [
-    "java", "spring boot", "kotlin", "android", "python", "react", "typescript",
-    "docker", "sql", "postgresql", "mysql", "git", "rest", "junit", "mvvm",
-    "room", "fastapi", "linux", "dam", "daw", "ci/cd"
-  ];
+const UNIVERSAL_STOPWORDS = new Set([
+  "de", "la", "el", "en", "y", "a", "los", "del", "se", "las", "por", "un", "para", "con", "no", "una",
+  "su", "al", "lo", "como", "mas", "pero", "sus", "le", "ya", "o", "este", "si", "porque", "esta",
+  "entre", "cuando", "muy", "sin", "sobre", "tambien", "me", "hasta", "hay", "donde", "quien",
+  "desde", "todo", "nos", "durante", "todos", "uno", "les", "ni", "contra", "otros", "ese", "eso",
+  "ante", "ellos", "e", "esto", "mi", "antes", "algunos", "que", "unos", "yo", "otro", "otras",
+  "otra", "tanto", "esa", "estos", "mucho", "quienes", "nada", "muchos", "cual", "poco",
+  "ella", "estar", "estas", "algunas", "algo", "nosotros", "mis", "tus", "nuestro", "nuestra",
+  "nuestros", "nuestras", "somos", "estamos", "tienen", "tenemos", "puedes", "podras", "daras",
+  "cuidaras", "realizaras", "aseguraras", "uniras", "brindamos", "buscamos", "ofrecemos", "esperamos",
+  "busqueda", "puesto", "empresa", "posiciones", "procedimientos", "proceso", "propios", "propias",
+  "ano", "anos", "mes", "meses", "dia", "dias", "horas", "procedimiento", "establecidos",
+  "casi", "territorio", "nacional", "internacional", "plena", "pleno", "expansion",
+  "maxima", "linea", "siente", "enamorate", "unico", "unica", "cambio", "forma", "compromiso",
+  "motivacion", "equipo", "parte", "dinamico", "inclusivo", "dentro", "nivel", "disfrutar", "club",
+  "servicio", "totalmente", "gratuito", "caso", "positivamente", "tener", "relacionada", "asi",
+  "buenas", "habilidades", "interes", "trabajar", "dudes", "inscribete", "esperando", "posicion",
+  "the", "and", "to", "of", "a", "in", "is", "that", "for", "it", "as", "was", "with", "on", "at",
+  "by", "this", "be", "are", "from", "or", "have", "an", "they", "which", "one", "you", "were", "her"
+]);
+
+const UNIVERSAL_KEY_PHRASES = [
+  "atencion al cliente", "trabajo en equipo", "sala de ventas", "jornada parcial",
+  "orientacion al cliente", "reposicion de mercancia", "gestion de stock", "control de inventario",
+  "cierre de caja", "arqueo de caja", "orden y limpieza",
+  "spring boot", "machine learning", "deep learning", "inteligencia artificial",
+  "bases de datos", "desarrollo web", "apis rest", "pruebas unitarias", "control de versiones",
+  "integracion continua", "arquitectura limpia", "desarrollo de aplicaciones multiplataforma",
+  "desarrollo de aplicaciones web"
+];
+
+const UNIVERSAL_PRIORITY_TERMS = new Set([
+  "retail", "cajero", "cajeros", "cajera", "cajeras", "reponedor", "reponedores",
+  "caja", "almacen", "tienda", "tiendas", "mercancia", "comercio", "ingles", "idiomas",
+  "dinamismo", "limpieza", "ventas", "alimentacion",
+  "python", "java", "react", "docker", "sql", "linux", "aws", "git", "fastapi", "kotlin",
+  "dam", "daw", "asir", "microservicios", "postgresql", "mysql", "kubernetes", "typescript"
+]);
+
+function extractUniversalJobKeywords(jobText: string, maxKeywords: number = 14): string[] {
+  const normJob = stripAccents(jobText.toLowerCase());
+  const foundPhrases: string[] = [];
+
+  for (const phrase of UNIVERSAL_KEY_PHRASES) {
+    const phraseNorm = stripAccents(phrase);
+    const regex = new RegExp(`\\b${phraseNorm}\\b`, "i");
+    if (regex.test(normJob)) {
+      foundPhrases.push(phrase);
+    }
+  }
+
+  const words = normJob.match(/\b[a-z]{3,20}\b/g) || [];
+  const wordFreq: Record<string, number> = {};
+
+  for (const w of words) {
+    if (!UNIVERSAL_STOPWORDS.has(w) && w.length > 3) {
+      if (foundPhrases.some((p) => p.includes(w))) continue;
+      wordFreq[w] = (wordFreq[w] || 0) + 1;
+    }
+  }
+
+  for (const w of Object.keys(wordFreq)) {
+    if (UNIVERSAL_PRIORITY_TERMS.has(w)) {
+      wordFreq[w] *= 3;
+    }
+  }
+
+  // Acronyms (e.g. AWS, DAM, DAW, SQL) strictly with word boundaries
+  const acronyms = jobText.match(/\b[A-Z]{2,6}\b/g) || [];
+  for (const acr of acronyms) {
+    const acrLow = acr.toLowerCase();
+    if (!UNIVERSAL_STOPWORDS.has(acrLow)) {
+      wordFreq[acrLow] = (wordFreq[acrLow] || 0) + 4;
+    }
+  }
+
+  const sortedWords = Object.entries(wordFreq)
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w);
+
+  const topSingles = sortedWords.slice(0, Math.max(0, maxKeywords - foundPhrases.length));
+  return [...foundPhrases, ...topSingles];
+}
+
+export function standaloneAudit(resume: StandaloneResume, jobText: string) {
+  const normResume = stripAccents(resume.raw_text.toLowerCase());
+
+  const extractedKeywords = jobText.trim()
+    ? extractUniversalJobKeywords(jobText)
+    : ["GIT", "SQL", "LINUX", "REST"];
 
   const matchedKeywords: string[] = [];
   const missingKeywords: string[] = [];
 
-  for (const kw of candidateKeywords) {
-    if (normJob.includes(kw)) {
-      const syns = SYNONYMS[kw] || [kw];
-      const match = syns.some((s) => normResume.includes(s));
-      if (match) {
-        matchedKeywords.push(kw.toUpperCase());
-      } else {
-        missingKeywords.push(kw.toUpperCase());
-      }
+  for (const kw of extractedKeywords) {
+    const kwNorm = stripAccents(kw.toLowerCase());
+    const syns = SYNONYMS[kwNorm] || [kwNorm];
+
+    // Word boundary check for each synonym
+    const isMatched = syns.some((s) => {
+      const sNorm = stripAccents(s.toLowerCase());
+      const regex = new RegExp(`(^|\\s|[.,;:\\(\\)])${sNorm}($|\\s|[.,;:\\(\\)])`, "i");
+      return regex.test(normResume);
+    });
+
+    if (isMatched) {
+      matchedKeywords.push(kw.toUpperCase());
+    } else {
+      missingKeywords.push(kw.toUpperCase());
     }
   }
 
-  // Fallback if job text was simple
-  if (matchedKeywords.length === 0 && missingKeywords.length === 0) {
-    matchedKeywords.push("GIT", "SQL", "LINUX", "REST");
-  }
-
-  const keywordCoverage = matchedKeywords.length + missingKeywords.length > 0
-    ? Math.round((matchedKeywords.length / (matchedKeywords.length + missingKeywords.length)) * 100)
-    : 75;
+  const totalKw = Math.max(1, extractedKeywords.length);
+  const keywordCoverage = Math.round((matchedKeywords.length / totalKw) * 100);
 
   const isOriginalTwoColumn = resume.id === 10 || resume.raw_text.includes("SOBRE MÍ                   EXPERIENCIA");
 
   const parseabilityScore = isOriginalTwoColumn ? 45 : 100;
-  const keywordScore = Math.min(100, Math.max(50, keywordCoverage));
+  const keywordScore = Math.min(100, keywordCoverage);
   const impactScore = isOriginalTwoColumn ? 40 : 78;
   const formatScore = isOriginalTwoColumn ? 55 : 90;
 
   const overallScore = Math.round(
-    parseabilityScore * 0.3 + keywordScore * 0.35 + impactScore * 0.2 + formatScore * 0.15
+    parseabilityScore * 0.20 + keywordScore * 0.40 + impactScore * 0.25 + formatScore * 0.15
   );
+
+  const priorityRecommendations: any[] = [];
+  if (isOriginalTwoColumn) {
+    priorityRecommendations.push({
+      category: "Formato",
+      priority: "Crítica",
+      action: "Usa el botón 'Convertir a 100% ATS Friendly' para aplanar el diseño a 1 sola columna."
+    });
+  }
+
+  if (totalKw >= 4 && keywordCoverage < 35) {
+    priorityRecommendations.push({
+      category: "Alineación de Perfil",
+      priority: "Crítica",
+      action: "Desajuste sectorial detectado: El perfil del CV no coincide con los requisitos operativos de esta vacante. Destaca competencias transferibles (trabajo en equipo, organización, dinamismo, atención al cliente) para optar a este puesto."
+    });
+  }
+
+  if (missingKeywords.length > 0) {
+    priorityRecommendations.push({
+      category: "Keywords",
+      priority: "Alta",
+      action: `Añade menciones específicas a: ${missingKeywords.slice(0, 4).join(", ")}.`
+    });
+  }
+
+  if (!isOriginalTwoColumn) {
+    priorityRecommendations.push({
+      category: "Impacto",
+      priority: "Media",
+      action: "Cuantifica logros con la fórmula Google XYZ (ej: 'reduciendo tiempos en 25%')."
+    });
+  }
 
   return {
     result: {
@@ -350,9 +467,9 @@ export function standaloneAudit(resume: StandaloneResume, jobText: string) {
           : []
       },
       keyword_details: {
-        total_extracted_keywords: matchedKeywords.length + missingKeywords.length,
+        total_extracted_keywords: totalKw,
         matched_keywords: matchedKeywords,
-        missing_keywords: missingKeywords.slice(0, 4),
+        missing_keywords: missingKeywords.slice(0, 6),
         coverage_pct: keywordCoverage
       },
       impact_details: {
@@ -379,26 +496,7 @@ export function standaloneAudit(resume: StandaloneResume, jobText: string) {
             }
           ]
         : [],
-      priority_recommendations: isOriginalTwoColumn
-        ? [
-            {
-              category: "Formato",
-              priority: "Crítica",
-              action: "Usa el botón 'Convertir a 100% ATS Friendly' para aplanar el diseño a 1 sola columna."
-            },
-            {
-              category: "Impacto",
-              priority: "Alta",
-              action: "Cuantifica logros con la fórmula Google XYZ (ej: 'reduciendo tiempos en 25%')."
-            }
-          ]
-        : [
-            {
-              category: "Keywords",
-              priority: "Media",
-              action: `Añade menciones específicas a: ${missingKeywords.slice(0, 2).join(", ") || "certificaciones"}.`
-            }
-          ]
+      priority_recommendations: priorityRecommendations.slice(0, 4)
     },
     raw_ats_view: isOriginalTwoColumn
       ? `=== LECTURA REAL EXTRAÍDA POR UN PARSER ATS (ENTRELAZADO EN 2 COLUMNAS) ===

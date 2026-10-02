@@ -66,6 +66,22 @@ Requisitos:
 - Dominio de bases de datos relacionales (PostgreSQL) y caching con Redis.
 - Experiencia demostrable en despliegues en AWS y automatización de pipelines CI/CD con GitHub Actions.
 - Buenas prácticas de arquitectura limpia, testing automatizado (Pytest) y metodologías ágiles (Scrum).`
+  },
+  {
+    name: "Cajero / Reponedor (Retail - Pepco)",
+    text: `Si te encanta el sector retail y estás buscando un lugar en el que desarrollar todo tu potencial, ¡únete al equipo de Pepco!
+Estamos en búsqueda de cajeros/as-reponedores/as a jornada parcial para nuestras tiendas.
+Tu misión será apoyar la venta diaria ofreciendo una atención excepcional a los clientes en tienda y en caja, reponer productos y cuidar la imagen de la tienda.
+¿Qué harás como Cajero/a-reponedor/a?:
+- Darás atención al cliente, tanto en sala de ventas como en caja.
+- Cuidarás de la imagen de la tienda, garantizando los estándares establecidos.
+- Realizarás la reposición de mercancía según los procedimientos establecidos.
+- Asegurarás la organización, limpieza y orden de la tienda y el almacén.
+¿Qué esperamos de ti?:
+- Experiencia en atención al cliente, preferiblemente en tiendas de retail y/o alimentación de al menos 6 meses.
+- Buenas habilidades para el trabajo en equipo, orientación al cliente y dinamismo.
+- Interés en trabajar a jornada parcial.
+- Se valorarán positivamente conocimientos de inglés en atención al cliente.`
   }
 ];
 
