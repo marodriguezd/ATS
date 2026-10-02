@@ -127,7 +127,7 @@ export const api = {
       }
     }
 
-    if (!text) {
+    if (!text && !file.name.endsWith(".pdf") && file.type !== "application/pdf") {
       text = await file.text().catch(() => "");
     }
 
@@ -148,6 +148,8 @@ export const api = {
         email: parsedData.email,
         phone: parsedData.phone,
         location: parsedData.location,
+        linkedin: parsedData.linkedin,
+        github: parsedData.github,
         summary: parsedData.summary,
         sections: parsedData.sections
       }

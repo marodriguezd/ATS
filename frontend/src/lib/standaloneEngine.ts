@@ -548,14 +548,23 @@ DAM (FP Superior) Linux, SQL, Git, Scrum
 export function standaloneAutoFix(resume: StandaloneResume, jobText: string) {
   // 1. Extract and normalize parsed data from the resume
   let parsed = resume.parsed;
-  if (!parsed || !parsed.full_name || parsed.full_name === "Currículum Vitae") {
+  if (!parsed || !parsed.full_name || parsed.full_name === "Currículum Vitae" || parsed.full_name.includes("PDF")) {
     parsed = parseRawResumeText(resume.raw_text, resume.title);
   }
 
-  const fullName = (parsed.full_name || "MIGUEL ÁNGEL RODRÍGUEZ DALÍ").toUpperCase();
-  const email = parsed.email || "migueadali@gmail.com";
-  const phone = parsed.phone || "+34 634 710 007";
-  const location = parsed.location || "Sevilla, España";
+  const rawFullName = parsed.full_name || resume.title || "CANDIDATO/A";
+  const fullName = rawFullName
+    .replace(/\.[^/.]+$/, "")
+    .replace(/^%PDF-[\d._]+/i, "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toUpperCase() || "CANDIDATO/A";
+
+  const email = parsed.email || "";
+  const phone = parsed.phone || "";
+  const location = parsed.location || "";
+  const linkedin = parsed.linkedin || "";
+  const github = parsed.github || "";
 
   // 2. Identify Job Target Domain
   const normJob = stripAccents(jobText.toLowerCase());
@@ -573,75 +582,198 @@ export function standaloneAutoFix(resume: StandaloneResume, jobText: string) {
   let perfectedSummary = "";
   const perfectedSections: Record<string, string[]> = {};
 
+  // Extract candidate's actual education
+  const rawEdu: string[] =
+    parsed.sections?.["EDUCACIÓN"] ||
+    parsed.sections?.["EDUCACIÓN Y FORMACIÓN"] ||
+    parsed.sections?.["FORMACIÓN"] ||
+    parsed.sections?.["ESTUDIOS"] ||
+    [];
+
+  const perfectedEdu: string[] = [];
+  for (let i = 0; i < rawEdu.length; i++) {
+    const item = rawEdu[i].trim();
+    if (!item) continue;
+    if (i + 1 < rawEdu.length) {
+      const next = rawEdu[i + 1].trim();
+      if (
+        /^(UOC|Universidad|Centro|Instituto|Escuela|IES|Colegio|Faculty|Campus)\b/i.test(next) ||
+        /\b(19\d\d|20\d\d)\b/.test(next)
+      ) {
+        perfectedEdu.push(`${item} - ${next}`);
+        i++;
+        continue;
+      }
+    }
+    perfectedEdu.push(item);
+  }
+
+  // Extract candidate's actual experience
+  const rawExp: string[] =
+    parsed.sections?.["EXPERIENCIA"] ||
+    parsed.sections?.["EXPERIENCIA LABORAL"] ||
+    parsed.sections?.["HISTORIAL LABORAL"] ||
+    [];
+
+  // Extract candidate's actual skills
+  const rawSkills: string[] =
+    parsed.sections?.["HABILIDADES"] ||
+    parsed.sections?.["COMPETENCIAS"] ||
+    parsed.sections?.["HABILIDADES TÉCNICAS"] ||
+    [];
+
+  // Extract candidate's actual languages
+  const rawLang: string[] =
+    parsed.sections?.["IDIOMAS"] ||
+    parsed.sections?.["LENGUAS"] ||
+    [];
+
+  // Extract candidate's actual additional data
+  const rawExtra: string[] =
+    parsed.sections?.["DATOS ADICIONALES"] ||
+    parsed.sections?.["INFORMACIÓN ADICIONAL"] ||
+    [];
+
   if (isRetailJob) {
-    perfectedSummary =
-      "Perfil junior dinámico y comprometido con alta vocación de servicio, rápida capacidad de aprendizaje y facilidad para el trabajo en equipo en entornos de tienda y retail. Con iniciativa para el mantenimiento del orden, reposición de mercancía y cuidado de la imagen de tienda y almacén. Poseo sólidos conocimientos en informática, dispositivos móviles y herramientas de caja y cobro. Con carnet de conducir B, vehículo propio, nivel B2 de inglés para atención al cliente y total disponibilidad horaria para turnos rotativos en tiendas de Andalucía.";
+    if (parsed.summary && (parsed.summary.toLowerCase().includes("atención") || parsed.summary.toLowerCase().includes("tienda"))) {
+      const cleanedSummary = parsed.summary
+        .replace(/^Soy\s+[A-Za-zÁÉÍÓÚñáéíóú]+\s+y\s+(?:cuento\s+con|tengo)\s+/i, "Profesional con ")
+        .replace(/^Soy\s+[A-Za-zÁÉÍÓÚñáéíóú]+,\s*/i, "Profesional ")
+        .trim();
+      perfectedSummary = `${cleanedSummary} Altamente organizada, responsable y orientada al cliente. Con experiencia en atención en sala de ventas y caja, reposición de mercancía, manejo de TPV y mantenimiento de la imagen de tienda y almacén. Total disponibilidad para turnos rotativos y jornada parcial.`;
+    } else {
+      perfectedSummary =
+        "Profesional dinámico/a y responsable con alta vocación de servicio, rápida capacidad de aprendizaje y facilidad para el trabajo en equipo en tiendas y entornos retail. Con iniciativa para el mantenimiento del orden, reposición de mercancía y cuidado riguroso de la imagen de tienda y almacén. Experiencia en atención al cliente, manejo de caja/TPV y total disponibilidad horaria para turnos rotativos en tiendas de Andalucía.";
+    }
 
-    perfectedSections["EXPERIENCIA Y PRÁCTICAS"] = [
-      "Cajero / Reponedor en formación y prácticas operativas en entornos de venta directa.",
-      "Atención, cobro en caja y asesoramiento personalizado a clientes en sala de ventas.",
-      "Reposición de mercancía, control de stock y colocación según estándares de tienda y almacén.",
-    ];
+    // Experience: Preserve candidate's real job title and company if present
+    const hasRetailExp = rawExp.some((line) => {
+      const l = line.toLowerCase();
+      return (
+        l.includes("helader") ||
+        l.includes("dependient") ||
+        l.includes("cajer") ||
+        l.includes("tienda") ||
+        l.includes("atencion al cliente") ||
+        l.includes("comercio") ||
+        l.includes("reponedor") ||
+        l.includes("ventas")
+      );
+    });
 
-    perfectedSections["HABILIDADES Y COMPETENCIAS (ATS)"] = [
-      "Atención y orientación al cliente en sala de ventas y línea de caja.",
-      "Reposición de mercancía y mantenimiento del orden y la imagen comercial.",
-      "Organización, limpieza y orden riguroso de tienda y almacén.",
-      "Trabajo en equipo, dinamismo y rápida adaptación a turnos variables y rotativos.",
-      "Manejo de TPV, sistemas de cobro informáticos y dispositivos móviles.",
-      "Cuidado del detalle, puntualidad y aprendizaje rápido de nuevos procedimientos.",
-    ];
+    if (hasRetailExp && rawExp.length > 0) {
+      // Retain candidate's actual role/company header
+      const jobHeader = rawExp[0] + (rawExp[1] && !rawExp[1].startsWith("Atención") ? ` - ${rawExp[1]}` : "");
+      perfectedSections["EXPERIENCIA LABORAL"] = [
+        jobHeader,
+        "Atención personalizada, cobro y asesoramiento a clientes en sala de ventas y línea de caja, garantizando un servicio de máxima calidad.",
+        "Manejo de terminal TPV, apertura, registro de transacciones, cobros multiformato y arqueo de caja diario con precisión.",
+        "Reposición continua de mercancía, control de existencias y colocación de productos siguiendo los estándares visuales de la compañía.",
+        "Mantenimiento exhaustivo de la organización, limpieza y orden en tienda y almacén conforme a los procedimientos establecidos.",
+      ];
+    } else if (rawExp.length > 0) {
+      // Candidate with other background applying to retail: preserve real job and highlight transferable retail skills
+      perfectedSections["EXPERIENCIA LABORAL"] = [
+        rawExp[0],
+        "Atención directa a usuarios y clientes, resolución ágil de incidencias y orientación personalizada al consumidor.",
+        "Gestión operativa, control de inventario y reposición de materiales asegurando orden y disponibilidad.",
+        "Manejo de sistemas informáticos de cobro y TPV, registro de operaciones y cuadre de caja.",
+        "Trabajo colaborativo en equipo, adaptabilidad inmediata a turnos variables y cuidado de la imagen del entorno laboral.",
+      ];
+    } else {
+      perfectedSections["EXPERIENCIA Y PRÁCTICAS"] = [
+        "Cajero / Reponedor en formación y prácticas operativas en entornos comerciales de venta directa.",
+        "Atención, cobro en caja y asesoramiento personalizado a clientes en sala de ventas.",
+        "Reposición de mercancía, control de existencias y colocación según estándares de tienda y almacén.",
+      ];
+    }
 
-    perfectedSections["EDUCACIÓN Y FORMACIÓN"] = [
-      "Técnico Superior en Desarrollo de Aplicaciones Multiplataforma (DAM) - Instituto Técnico de Estudios Profesionales (ITEP)",
-      "Bachillerato en Ciencias Sociales - IES Julio Verne (Sevilla)",
+    // Skills
+    const retailKeywords = [
+      "Atención y orientación al cliente en sala de ventas y caja",
+      "Reposición de mercancía y mantenimiento de la imagen comercial",
+      "Organización, limpieza y orden riguroso de tienda y almacén",
+      "Trabajo en equipo, dinamismo y rápida adaptación a turnos rotativos",
+      "Manejo de TPV, sistemas de cobro y dispositivos de stock",
+      "Cuidado del detalle, puntualidad y cumplimiento de procedimientos",
     ];
+    const mergedSkills = Array.from(new Set([...rawSkills, ...retailKeywords])).slice(0, 8);
+    perfectedSections["HABILIDADES Y COMPETENCIAS (ATS)"] = mergedSkills;
 
-    perfectedSections["IDIOMAS"] = [
-      "Español: Nativo",
-      "Inglés: Nivel B2 (Atención al cliente fluida y resolución de consultas)",
-    ];
+    // Education: ALWAYS use candidate's own education if present
+    if (perfectedEdu.length > 0) {
+      perfectedSections["EDUCACIÓN Y FORMACIÓN"] = perfectedEdu;
+    } else {
+      perfectedSections["EDUCACIÓN Y FORMACIÓN"] = [
+        "Educación Secundaria Obligatoria / Bachillerato o Formación Profesional",
+      ];
+    }
 
-    perfectedSections["DATOS ADICIONALES"] = [
-      "Permiso de conducir B y vehículo propio con disponibilidad para desplazamientos.",
-      "Disponibilidad horaria total e inmediata para jornada parcial o completa.",
-    ];
+    // Languages: ALWAYS use candidate's own languages if present
+    if (rawLang.length > 0) {
+      perfectedSections["IDIOMAS"] = rawLang;
+    } else {
+      perfectedSections["IDIOMAS"] = [
+        "Español: Nativo",
+        "Inglés: Nivel B1-B2 (Atención al cliente fluida y resolución de consultas)",
+      ];
+    }
+
+    // Additional data
+    const extraList = [...rawExtra];
+    if (!extraList.some((e) => e.toLowerCase().includes("disponibilidad"))) {
+      extraList.push("Disponibilidad horaria total e inmediata para jornada parcial o turnos rotativos.");
+    }
+    perfectedSections["DATOS ADICIONALES"] = extraList;
   } else {
     // IT / Software Engineering Job
     perfectedSummary =
       parsed.summary ||
-      "Desarrollador de Software con formación en Ingeniería Informática y Grado Superior DAM. Especializado en diseño de arquitecturas backend robustas, APIs RESTful y entornos contenedorizados con Docker y buenas prácticas ágiles.";
+      "Desarrollador de Software con formación técnica y sólida capacidad para el desarrollo de soluciones escalables, APIs RESTful y sistemas de backend con buenas prácticas ágiles.";
 
-    perfectedSections["EXPERIENCIA LABORAL"] = [
-      "Desarrollé arquitecturas backend con Python y FastAPI procesando peticiones REST con latencias inferiores a 50ms.",
-      "Diseñé modelos relacionales en PostgreSQL y MySQL con consultas indexadas de alto rendimiento.",
-      "Automaticé entornos de desarrollo y pruebas con Docker y Docker Compose para despliegues reproducibles.",
-    ];
+    if (rawExp.length > 0) {
+      perfectedSections["EXPERIENCIA LABORAL"] = rawExp;
+    } else {
+      perfectedSections["EXPERIENCIA LABORAL"] = [
+        "Desarrollé arquitecturas backend procesando peticiones REST con latencias inferiores a 50ms.",
+        "Diseñé modelos relacionales en bases de datos relacionales con consultas indexadas de alto rendimiento.",
+        "Automaticé entornos de desarrollo y pruebas con Docker para despliegues reproducibles.",
+      ];
+    }
 
-    perfectedSections["HABILIDADES TÉCNICAS (ATS)"] = [
+    const itKeywords = [
       "Python, FastAPI, Java, Spring Boot, PostgreSQL, Docker, Git, REST APIs, Linux, Scrum",
     ];
+    perfectedSections["HABILIDADES TÉCNICAS (ATS)"] =
+      rawSkills.length > 0 ? Array.from(new Set([...rawSkills, ...itKeywords])).slice(0, 8) : itKeywords;
 
-    perfectedSections["EDUCACIÓN Y FORMACIÓN"] = [
-      "Grado en Ingeniería Informática - UCAM",
-      "Técnico Superior en Desarrollo de Aplicaciones Multiplataforma (DAM) - ITEP / FP Oficial",
-    ];
+    if (perfectedEdu.length > 0) {
+      perfectedSections["EDUCACIÓN Y FORMACIÓN"] = perfectedEdu;
+    } else {
+      perfectedSections["EDUCACIÓN Y FORMACIÓN"] = [
+        "Formación Técnica Superior en Informática o Ingeniería de Software",
+      ];
+    }
 
-    perfectedSections["IDIOMAS"] = [
-      "Español: Nativo",
-      "Inglés: Nivel B2 (Técnico y profesional)",
-    ];
+    if (rawLang.length > 0) {
+      perfectedSections["IDIOMAS"] = rawLang;
+    } else {
+      perfectedSections["IDIOMAS"] = [
+        "Español: Nativo",
+        "Inglés: Nivel B2 (Técnico y profesional)",
+      ];
+    }
 
-    perfectedSections["DATOS ADICIONALES"] = [
-      "Permiso de conducir B y vehículo propio.",
-      "Disponibilidad inmediata.",
-    ];
+    if (rawExtra.length > 0) {
+      perfectedSections["DATOS ADICIONALES"] = rawExtra;
+    }
   }
 
   // 4. Assemble clean 1-column raw_text without any multi-column entanglements
+  const contactParts = [email, phone, location, linkedin, github].filter(Boolean);
   const textParts: string[] = [
     fullName,
-    `${email}  |  ${phone}  |  ${location}`,
+    contactParts.join("  |  "),
     "--------------------------------------------------",
     "\nRESUMEN PROFESIONAL",
     perfectedSummary,

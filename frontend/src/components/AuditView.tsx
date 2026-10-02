@@ -160,13 +160,13 @@ export const AuditView: React.FC = () => {
       const exportPayload = {
         title: activeResumeTitle,
         full_name: currentResumeData?.parsed?.full_name || activeResumeTitle.replace(/\.[^/.]+$/, ""),
-        email: currentResumeData?.parsed?.email || "migueadali@gmail.com",
-        phone: currentResumeData?.parsed?.phone || "+34 618 694 227",
-        location: currentResumeData?.parsed?.location || "Murcia, España",
-        linkedin: currentResumeData?.parsed?.linkedin || "linkedin.com/in/miguel-angel-rodriguez-dali",
-        github: currentResumeData?.parsed?.github || "github.com/marodriguezd",
-        summary: currentResumeData?.parsed?.summary,
-        sections: currentResumeData?.parsed?.sections,
+        email: currentResumeData?.parsed?.email || null,
+        phone: currentResumeData?.parsed?.phone || null,
+        location: currentResumeData?.parsed?.location || null,
+        linkedin: currentResumeData?.parsed?.linkedin || null,
+        github: currentResumeData?.parsed?.github || null,
+        summary: currentResumeData?.parsed?.summary || null,
+        sections: currentResumeData?.parsed?.sections || null,
         raw_text: cleanRaw
       };
 
