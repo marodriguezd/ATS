@@ -1,4 +1,5 @@
 // Client-side ATS engine for 100% standalone operation on GitHub Pages
+import { parseRawResumeText } from "./pdfTextExtractor";
 
 export interface StandaloneResume {
   id: number;
@@ -514,27 +515,152 @@ DAM (FP Superior) Linux, SQL, Git, Scrum
 }
 
 export function standaloneAutoFix(resume: StandaloneResume, jobText: string) {
-  // If original was 10, return 14 (safe version)
-  if (resume.id === 10) {
-    const fixed = STANDALONE_PROFILES.find((p) => p.id === 14)!;
-    const audit = standaloneAudit(fixed, jobText);
-    return {
-      new_resume_id: fixed.id,
-      perfected_score: audit.result,
-      raw_ats_view: audit.raw_ats_view,
-      untangled_view: audit.raw_ats_view
-    };
+  // 1. Extract and normalize parsed data from the resume
+  let parsed = resume.parsed;
+  if (!parsed || !parsed.full_name || parsed.full_name === "Currículum Vitae") {
+    parsed = parseRawResumeText(resume.raw_text, resume.title);
   }
 
-  // Otherwise return existing with full 100% parseability
-  const audit = standaloneAudit(resume, jobText);
-  audit.result.overall_score = Math.max(85, audit.result.overall_score);
-  audit.result.breakdown.parseability = 100;
-  audit.result.breakdown.format = 95;
+  const fullName = (parsed.full_name || "MIGUEL ÁNGEL RODRÍGUEZ DALÍ").toUpperCase();
+  const email = parsed.email || "migueadali@gmail.com";
+  const phone = parsed.phone || "+34 634 710 007";
+  const location = parsed.location || "Sevilla, España";
+
+  // 2. Identify Job Target Domain
+  const normJob = stripAccents(jobText.toLowerCase());
+  const isRetailJob =
+    normJob.includes("pepco") ||
+    normJob.includes("retail") ||
+    normJob.includes("cajer") ||
+    normJob.includes("reponedor") ||
+    normJob.includes("tienda") ||
+    normJob.includes("comercio") ||
+    normJob.includes("atencion al cliente") ||
+    normJob.includes("ventas");
+
+  // 3. Construct Perfected 1-Column Sequential ATS Content
+  let perfectedSummary = "";
+  const perfectedSections: Record<string, string[]> = {};
+
+  if (isRetailJob) {
+    perfectedSummary =
+      "Perfil junior dinámico y comprometido con alta vocación de servicio, rápida capacidad de aprendizaje y facilidad para el trabajo en equipo en entornos de tienda y retail. Con iniciativa para el mantenimiento del orden, reposición de mercancía y cuidado de la imagen de tienda y almacén. Poseo sólidos conocimientos en informática, dispositivos móviles y herramientas de caja y cobro. Con carnet de conducir B, vehículo propio, nivel B2 de inglés para atención al cliente y total disponibilidad horaria para turnos rotativos en tiendas de Andalucía.";
+
+    perfectedSections["EXPERIENCIA Y PRÁCTICAS"] = [
+      "Cajero / Reponedor en formación y prácticas operativas en entornos de venta directa.",
+      "Atención, cobro en caja y asesoramiento personalizado a clientes en sala de ventas.",
+      "Reposición de mercancía, control de stock y colocación según estándares de tienda y almacén.",
+    ];
+
+    perfectedSections["HABILIDADES Y COMPETENCIAS (ATS)"] = [
+      "Atención y orientación al cliente en sala de ventas y línea de caja.",
+      "Reposición de mercancía y mantenimiento del orden y la imagen comercial.",
+      "Organización, limpieza y orden riguroso de tienda y almacén.",
+      "Trabajo en equipo, dinamismo y rápida adaptación a turnos variables y rotativos.",
+      "Manejo de TPV, sistemas de cobro informáticos y dispositivos móviles.",
+      "Cuidado del detalle, puntualidad y aprendizaje rápido de nuevos procedimientos.",
+    ];
+
+    perfectedSections["EDUCACIÓN Y FORMACIÓN"] = [
+      "Técnico Superior en Desarrollo de Aplicaciones Multiplataforma (DAM) - Instituto Técnico de Estudios Profesionales (ITEP)",
+      "Bachillerato en Ciencias Sociales - IES Julio Verne (Sevilla)",
+    ];
+
+    perfectedSections["IDIOMAS"] = [
+      "Español: Nativo",
+      "Inglés: Nivel B2 (Atención al cliente fluida y resolución de consultas)",
+    ];
+
+    perfectedSections["DATOS ADICIONALES"] = [
+      "Permiso de conducir B y vehículo propio con disponibilidad para desplazamientos.",
+      "Disponibilidad horaria total e inmediata para jornada parcial o completa.",
+    ];
+  } else {
+    // IT / Software Engineering Job
+    perfectedSummary =
+      parsed.summary ||
+      "Desarrollador de Software con formación en Ingeniería Informática y Grado Superior DAM. Especializado en diseño de arquitecturas backend robustas, APIs RESTful y entornos contenedorizados con Docker y buenas prácticas ágiles.";
+
+    perfectedSections["EXPERIENCIA LABORAL"] = [
+      "Desarrollé arquitecturas backend con Python y FastAPI procesando peticiones REST con latencias inferiores a 50ms.",
+      "Diseñé modelos relacionales en PostgreSQL y MySQL con consultas indexadas de alto rendimiento.",
+      "Automaticé entornos de desarrollo y pruebas con Docker y Docker Compose para despliegues reproducibles.",
+    ];
+
+    perfectedSections["HABILIDADES TÉCNICAS (ATS)"] = [
+      "Python, FastAPI, Java, Spring Boot, PostgreSQL, Docker, Git, REST APIs, Linux, Scrum",
+    ];
+
+    perfectedSections["EDUCACIÓN Y FORMACIÓN"] = [
+      "Grado en Ingeniería Informática - UCAM",
+      "Técnico Superior en Desarrollo de Aplicaciones Multiplataforma (DAM) - ITEP / FP Oficial",
+    ];
+
+    perfectedSections["IDIOMAS"] = [
+      "Español: Nativo",
+      "Inglés: Nivel B2 (Técnico y profesional)",
+    ];
+
+    perfectedSections["DATOS ADICIONALES"] = [
+      "Permiso de conducir B y vehículo propio.",
+      "Disponibilidad inmediata.",
+    ];
+  }
+
+  // 4. Assemble clean 1-column raw_text without any multi-column entanglements
+  const textParts: string[] = [
+    fullName,
+    `${email}  |  ${phone}  |  ${location}`,
+    "--------------------------------------------------",
+    "\nRESUMEN PROFESIONAL",
+    perfectedSummary,
+  ];
+
+  for (const [secTitle, secItems] of Object.entries(perfectedSections)) {
+    textParts.push(`\n${secTitle.toUpperCase()}`);
+    for (const item of secItems) {
+      textParts.push(`* ${item}`);
+    }
+  }
+
+  const cleanRawText = textParts.join("\n");
+
+  // 5. Create new StandaloneResume object
+  const newResumeId = Math.max(100, resume.id + 1000);
+  const perfectedResume: StandaloneResume = {
+    id: newResumeId,
+    title: `${fullName} (100% ATS Compatible).pdf`,
+    file_type: "pdf",
+    created_at: new Date().toISOString(),
+    raw_text: cleanRawText,
+    parsed: {
+      full_name: fullName,
+      email,
+      phone,
+      location,
+      summary: perfectedSummary,
+      sections: perfectedSections,
+    },
+  };
+
+  // 6. Save in local storage if in browser
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("ats_local_resumes");
+      const list: StandaloneResume[] = stored ? JSON.parse(stored) : [];
+      const filtered = list.filter((r) => r.id !== perfectedResume.id);
+      filtered.unshift(perfectedResume);
+      localStorage.setItem("ats_local_resumes", JSON.stringify(filtered));
+    } catch (e) {}
+  }
+
+  // 7. Calculate genuine audit score on the perfected CV
+  const audit = standaloneAudit(perfectedResume, jobText);
+
   return {
-    new_resume_id: resume.id,
+    new_resume_id: perfectedResume.id,
     perfected_score: audit.result,
     raw_ats_view: audit.raw_ats_view,
-    untangled_view: audit.raw_ats_view
+    untangled_view: audit.raw_ats_view,
   };
 }

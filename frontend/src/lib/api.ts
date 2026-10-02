@@ -114,9 +114,26 @@ export const api = {
       console.warn("Backend no disponible, procesando en modo cliente standalone:", e);
     }
 
-    // Client-side fallback
+    // Client-side fallback with real PDF extraction
     const resumeTitle = title || file.name;
-    const text = await file.text().catch(() => "");
+    let text = "";
+
+    if (file.name.endsWith(".pdf") || file.type === "application/pdf") {
+      try {
+        const { extractTextFromPdf } = await import("./pdfTextExtractor");
+        text = await extractTextFromPdf(file);
+      } catch (err) {
+        console.error("Error al extraer texto del PDF en cliente:", err);
+      }
+    }
+
+    if (!text) {
+      text = await file.text().catch(() => "");
+    }
+
+    const { parseRawResumeText } = await import("./pdfTextExtractor");
+    const parsedData = parseRawResumeText(text, resumeTitle);
+
     const localList = getLocalResumes();
     const newId = Math.max(...localList.map((r) => r.id), 20) + 1;
 
@@ -125,16 +142,14 @@ export const api = {
       title: resumeTitle,
       file_type: file.name.endsWith(".pdf") ? "pdf" : "txt",
       created_at: new Date().toISOString(),
-      raw_text: text || `${resumeTitle}\n\nEXPERIENCIA\nDesarrollador de Software\n\nEDUCACIÓN\nGrado Superior DAM`,
+      raw_text: text || `${parsedData.full_name}\n${parsedData.email || ""} | ${parsedData.phone || ""}\n\n${parsedData.summary}`,
       parsed: {
-        full_name: resumeTitle.replace(/\.[^/.]+$/, ""),
-        email: "candidato@email.com",
-        phone: "+34 600 000 000",
-        sections: {
-          EXPERIENCIA: ["Desarrollo de aplicaciones y microservicios."],
-          EDUCACIÓN: ["Grado Superior DAM"],
-          HABILIDADES: ["Java, Python, SQL, Git"]
-        }
+        full_name: parsedData.full_name,
+        email: parsedData.email,
+        phone: parsedData.phone,
+        location: parsedData.location,
+        summary: parsedData.summary,
+        sections: parsedData.sections
       }
     };
 
