@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Heuristic ATS-readability and resume optimization suite (standalone demo).",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="es"
