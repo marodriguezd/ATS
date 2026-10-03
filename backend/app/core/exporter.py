@@ -1,19 +1,30 @@
 import io
+import html
 from typing import Dict, Any, List
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+# Canonical export model: A4, single column, no tables, predictable order:
+# Name -> Contact -> Summary -> Experience -> Skills -> Education -> Certifications
+EXPORT_HEADINGS = {
+    "summary": "PROFESSIONAL SUMMARY",
+    "experience": "WORK EXPERIENCE",
+    "skills": "TECHNICAL SKILLS",
+    "education": "EDUCATION",
+    "certifications": "CERTIFICATIONS",
+}
+
+def _esc(text: Any) -> str:
+    return html.escape(str(text or ""), quote=False)
+
 class ATSExporter:
     """
-    Generates 100% ATS-Safe resumes:
-    - Single-column layout
-    - No tables, graphics, or text frames
-    - Standard fonts (Helvetica, Times, Courier)
-    - Sequential text stream (Name -> Contact -> Summary -> Experience -> Education -> Skills)
+    ATS-friendly resume exporter (single column, standard fonts,
+    sequential text stream). A4 is the canonical page format.
     """
 
     @classmethod
@@ -21,7 +32,7 @@ class ATSExporter:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
-            pagesize=letter,
+            pagesize=A4,
             rightMargin=36,
             leftMargin=36,
             topMargin=36,
@@ -103,7 +114,7 @@ class ATSExporter:
 
         # 1. Name
         full_name = cv_data.get("full_name", "Nombre Completo")
-        story.append(Paragraph(full_name, name_style))
+        story.append(Paragraph(_esc(full_name), name_style))
 
         # 2. Contact details (in the main stream, NOT in header/footer)
         contact_items = []
@@ -118,73 +129,74 @@ class ATSExporter:
         if cv_data.get("github"):
             contact_items.append(cv_data["github"])
 
-        contact_line = " | ".join(contact_items)
-        story.append(Paragraph(contact_line, contact_style))
+        contact_line = " | ".join(_esc(c) for c in contact_items)
+        if contact_line:
+            story.append(Paragraph(contact_line, contact_style))
         story.append(HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#CBD5E1"), spaceAfter=8))
 
         # 3. Professional Summary
         summary = cv_data.get("summary", "")
         if summary:
-            story.append(Paragraph("PROFESSIONAL SUMMARY", heading_style))
-            story.append(Paragraph(summary, body_style))
+            story.append(Paragraph(EXPORT_HEADINGS["summary"], heading_style))
+            story.append(Paragraph(_esc(summary), body_style))
             story.append(Spacer(1, 4))
 
         # 4. Work Experience
         experiences = cv_data.get("experience", [])
         if experiences:
-            story.append(Paragraph("WORK EXPERIENCE", heading_style))
+            story.append(Paragraph(EXPORT_HEADINGS["experience"], heading_style))
             for exp in experiences:
                 role = exp.get("role", "")
                 company = exp.get("company", "")
                 dates = exp.get("dates", "")
                 loc = exp.get("location", "")
 
-                header_parts = [f"<b>{role}</b>", company]
+                header_parts = [f"<b>{_esc(role)}</b>", _esc(company)]
                 if loc:
-                    header_parts.append(loc)
+                    header_parts.append(_esc(loc))
                 if dates:
-                    header_parts.append(f"<i>({dates})</i>")
+                    header_parts.append(f"<i>({_esc(dates)})</i>")
 
-                story.append(Paragraph(" | ".join(filter(None, header_parts)), subheading_style))
+                story.append(Paragraph(" | ".join(p for p in header_parts if p.strip(" |")), subheading_style))
 
                 bullets = exp.get("bullets", [])
                 for b in bullets:
-                    story.append(Paragraph(f"&bull; {b}", bullet_style))
+                    story.append(Paragraph(f"&bull; {_esc(b)}", bullet_style))
                 story.append(Spacer(1, 4))
 
         # 5. Skills
         skills = cv_data.get("skills", [])
         if skills:
-            story.append(Paragraph("TECHNICAL & PROFESSIONAL SKILLS", heading_style))
+            story.append(Paragraph(EXPORT_HEADINGS["skills"], heading_style))
             if isinstance(skills, list):
                 skills_text = ", ".join(skills)
             else:
                 skills_text = str(skills)
-            story.append(Paragraph(skills_text, body_style))
+            story.append(Paragraph(_esc(skills_text), body_style))
             story.append(Spacer(1, 4))
 
         # 6. Education
         education = cv_data.get("education", [])
         if education:
-            story.append(Paragraph("EDUCATION", heading_style))
+            story.append(Paragraph(EXPORT_HEADINGS["education"], heading_style))
             for edu in education:
                 degree = edu.get("degree", "")
                 institution = edu.get("institution", "")
                 year = edu.get("year", "")
-                edu_parts = [f"<b>{degree}</b>", institution]
+                edu_parts = [f"<b>{_esc(degree)}</b>", _esc(institution)]
                 if year:
-                    edu_parts.append(str(year))
-                story.append(Paragraph(" | ".join(filter(None, edu_parts)), subheading_style))
+                    edu_parts.append(_esc(str(year)))
+                story.append(Paragraph(" | ".join(p for p in edu_parts if p.strip(" |")), subheading_style))
                 if edu.get("notes"):
-                    story.append(Paragraph(f"&bull; {edu['notes']}", bullet_style))
+                    story.append(Paragraph(f"&bull; {_esc(edu['notes'])}", bullet_style))
             story.append(Spacer(1, 4))
 
         # 7. Certifications (if any)
         certs = cv_data.get("certifications", [])
         if certs:
-            story.append(Paragraph("CERTIFICATIONS", heading_style))
+            story.append(Paragraph(EXPORT_HEADINGS["certifications"], heading_style))
             for cert in certs:
-                story.append(Paragraph(f"&bull; {cert}", bullet_style))
+                story.append(Paragraph(f"&bull; {_esc(cert)}", bullet_style))
 
         doc.build(story)
         buffer.seek(0)
@@ -224,14 +236,15 @@ class ATSExporter:
 
         # Summary
         if cv_data.get("summary"):
-            cls._add_docx_section_heading(doc, "PROFESSIONAL SUMMARY")
+            cls._add_docx_section_heading(doc, EXPORT_HEADINGS["summary"])
             p = doc.add_paragraph(cv_data["summary"])
-            p.runs[0].font.name = "Arial"
-            p.runs[0].font.size = Pt(10)
+            if p.runs:
+                p.runs[0].font.name = "Arial"
+                p.runs[0].font.size = Pt(10)
 
         # Experience
         if cv_data.get("experience"):
-            cls._add_docx_section_heading(doc, "WORK EXPERIENCE")
+            cls._add_docx_section_heading(doc, EXPORT_HEADINGS["experience"])
             for exp in cv_data["experience"]:
                 p_role = doc.add_paragraph()
                 r_title = p_role.add_run(f"{exp.get('role', '')} — {exp.get('company', '')}")
@@ -246,21 +259,23 @@ class ATSExporter:
 
                 for bullet in exp.get("bullets", []):
                     bp = doc.add_paragraph(bullet, style='List Bullet')
-                    bp.runs[0].font.name = "Arial"
-                    bp.runs[0].font.size = Pt(9.5)
+                    if bp.runs:
+                        bp.runs[0].font.name = "Arial"
+                        bp.runs[0].font.size = Pt(9.5)
 
         # Skills
         if cv_data.get("skills"):
-            cls._add_docx_section_heading(doc, "TECHNICAL & PROFESSIONAL SKILLS")
+            cls._add_docx_section_heading(doc, EXPORT_HEADINGS["skills"])
             skills_val = cv_data["skills"]
             text = ", ".join(skills_val) if isinstance(skills_val, list) else str(skills_val)
             p = doc.add_paragraph(text)
-            p.runs[0].font.name = "Arial"
-            p.runs[0].font.size = Pt(10)
+            if p.runs:
+                p.runs[0].font.name = "Arial"
+                p.runs[0].font.size = Pt(10)
 
         # Education
         if cv_data.get("education"):
-            cls._add_docx_section_heading(doc, "EDUCATION")
+            cls._add_docx_section_heading(doc, EXPORT_HEADINGS["education"])
             for edu in cv_data["education"]:
                 p = doc.add_paragraph()
                 r = p.add_run(f"{edu.get('degree', '')} — {edu.get('institution', '')}")
@@ -270,6 +285,11 @@ class ATSExporter:
                 if edu.get("year"):
                     p.add_run(f" ({edu.get('year')})")
 
+        if cv_data.get("certifications"):
+            cls._add_docx_section_heading(doc, EXPORT_HEADINGS["certifications"])
+            for cert in cv_data["certifications"]:
+                doc.add_paragraph(str(cert), style="List Bullet")
+
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
@@ -278,31 +298,36 @@ class ATSExporter:
     @classmethod
     def export_text(cls, cv_data: Dict[str, Any]) -> str:
         lines = []
-        lines.append(cv_data.get("full_name", "").upper())
-        contact_items = [cv_data.get(k) for k in ["email", "phone", "location", "linkedin", "github"] if cv_data.get(k)]
+        lines.append(str(cv_data.get("full_name", "")).upper())
+        contact_items = [str(cv_data.get(k)) for k in ["email", "phone", "location", "linkedin", "github"] if cv_data.get(k)]
         lines.append(" | ".join(contact_items))
         lines.append("-" * 50)
 
         if cv_data.get("summary"):
-            lines.append("\nPROFESSIONAL SUMMARY")
-            lines.append(cv_data["summary"])
+            lines.append(f"\n{EXPORT_HEADINGS['summary']}")
+            lines.append(str(cv_data["summary"]))
 
         if cv_data.get("experience"):
-            lines.append("\nWORK EXPERIENCE")
+            lines.append(f"\n{EXPORT_HEADINGS['experience']}")
             for exp in cv_data["experience"]:
                 lines.append(f"{exp.get('role', '')} | {exp.get('company', '')} | {exp.get('dates', '')}")
                 for b in exp.get("bullets", []):
                     lines.append(f"  * {b}")
 
         if cv_data.get("skills"):
-            lines.append("\nTECHNICAL SKILLS")
+            lines.append(f"\n{EXPORT_HEADINGS['skills']}")
             skills_val = cv_data["skills"]
             lines.append(", ".join(skills_val) if isinstance(skills_val, list) else str(skills_val))
 
         if cv_data.get("education"):
-            lines.append("\nEDUCATION")
+            lines.append(f"\n{EXPORT_HEADINGS['education']}")
             for edu in cv_data["education"]:
                 lines.append(f"{edu.get('degree', '')} - {edu.get('institution', '')} ({edu.get('year', '')})")
+
+        if cv_data.get("certifications"):
+            lines.append(f"\n{EXPORT_HEADINGS['certifications']}")
+            for c in cv_data["certifications"]:
+                lines.append(f"  * {c}")
 
         return "\n".join(lines)
 

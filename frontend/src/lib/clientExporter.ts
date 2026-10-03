@@ -72,7 +72,7 @@ export function downloadClientPdf(data: ResumeExportData, customFilename?: strin
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("RESUMEN PROFESIONAL", margin, y);
+    doc.text("PROFESSIONAL SUMMARY", margin, y);
     y += 14;
 
     doc.setFont("helvetica", "normal");
@@ -213,7 +213,7 @@ export async function downloadClientDocx(data: ResumeExportData, customFilename?
         spacing: { before: 200, after: 80 },
         children: [
           new TextRun({
-            text: "RESUMEN PROFESIONAL",
+            text: "PROFESSIONAL SUMMARY",
             bold: true,
             size: 22, // 11pt
             font: "Arial",
@@ -395,7 +395,7 @@ export function downloadClientTxt(data: ResumeExportData, customFilename?: strin
       "--------------------------------------------------",
     ];
     if (data.summary) {
-      parts.push("\nRESUMEN PROFESIONAL\n" + data.summary);
+      parts.push("\nPROFESSIONAL SUMMARY\n" + data.summary);
     }
     for (const [title, items] of Object.entries(data.sections)) {
       parts.push(`\n${title.toUpperCase()}`);

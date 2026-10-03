@@ -17,7 +17,7 @@ export async function extractTextFromPdf(file: File | ArrayBuffer): Promise<stri
 
   if (typeof window !== "undefined") {
     const basePath =
-      (window as any).__NEXT_DATA__?.basePath ||
+      (window as unknown as { __NEXT_DATA__?: { basePath?: string } }).__NEXT_DATA__?.basePath ||
       (window.location.pathname.startsWith("/ATS") ? "/ATS" : "");
     pdfjs.GlobalWorkerOptions.workerSrc = `${basePath}/pdf.worker.min.mjs`;
   }
@@ -44,15 +44,22 @@ export async function extractTextFromPdf(file: File | ArrayBuffer): Promise<stri
     const content = await page.getTextContent();
 
     // Map items with spatial coordinates
-    const items = content.items
-      .filter((it: any) => "str" in it && typeof it.str === "string" && it.str.trim().length > 0)
-      .map((it: any) => {
+    interface PdfTextItem { str: string; transform: [number, number, number, number, number, number] }
+    const isTextItem = (it: unknown): it is PdfTextItem => {
+      if (typeof it !== "object" || it === null) return false;
+      const rec = it as Record<string, unknown>;
+      return typeof rec.str === "string" && Array.isArray(rec.transform) && rec.transform.length >= 6;
+    };
+    const items = (content.items as unknown[])
+      .filter(isTextItem)
+      .filter((it) => it.str.trim().length > 0)
+      .map((it) => {
         const [, , , , x, y] = it.transform;
         return { str: it.str.trim(), x, y };
       });
 
     // Sort items in human reading order: top-to-bottom (descending y), then left-to-right (ascending x)
-    items.sort((a: any, b: any) => {
+    items.sort((a: { x: number; y: number }, b: { x: number; y: number }) => {
       if (Math.abs(a.y - b.y) <= 5) {
         return a.x - b.x;
       }

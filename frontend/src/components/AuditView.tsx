@@ -88,8 +88,8 @@ Tu misión será apoyar la venta diaria ofreciendo una atención excepcional a l
 
 const SAMPLE_JOB = JOB_TEMPLATES[0].text;
 
-const SAMPLE_CV_TEXT = `CARLOS MENDOZA
-carlos.mendoza@email.com | +34 612 345 678 | Madrid, España | linkedin.com/in/carlosmendoza
+const SAMPLE_CV_TEXT = `[DEMO] NOMBRE DE EJEMPLO
+nombre.ejemplo@example.com | +34 600 000 000 | Ciudad de ejemplo
 --------------------------------------------------
 
 PROFESSIONAL SUMMARY
@@ -287,27 +287,9 @@ export const AuditView: React.FC = () => {
         const uploadRes = await api.uploadResume(selected);
         setResumeId(uploadRes.id);
 
-        let activeJob = jobText;
-        const parsedStr = JSON.stringify(uploadRes.parsed || {}).toLowerCase();
-        const isRetailCV =
-          parsedStr.includes("heladeria") ||
-          parsedStr.includes("dependienta") ||
-          parsedStr.includes("caja") ||
-          parsedStr.includes("reponedor") ||
-          parsedStr.includes("tienda") ||
-          selected.name.toLowerCase().includes("clara");
-
-        if (isRetailCV && activeJob.includes("Backend Junior Java")) {
-          const pepcoTpl = JOB_TEMPLATES.find((t) => t.name.includes("Pepco"))?.text;
-          if (pepcoTpl) {
-            activeJob = pepcoTpl;
-            setJobText(pepcoTpl);
-          }
-        }
-
         const auditRes = await api.runAudit({
           resume_id: uploadRes.id,
-          job_text: activeJob,
+          job_text: jobText,
         });
         setAuditResult(auditRes.result);
         setRawAtsView(auditRes.raw_ats_view);
@@ -353,7 +335,7 @@ export const AuditView: React.FC = () => {
             </span>
           </div>
           <h2 className="text-xl font-bold mt-1.5">
-            Comprueba si tu CV supera Workday, Taleo, Greenhouse y Lever
+            Analiza la legibilidad ATS de tu CV (señales heuristicas, no simulacion de productos propietarios)
           </h2>
           <p className="text-xs text-emerald-200/80 max-w-2xl leading-relaxed">
             Sube tu PDF o Word y pega la oferta de empleo. Detectamos columnas que rompen el orden de lectura, tablas ilegibles, palabras clave faltantes y viñetas sin métricas de impacto.
@@ -526,7 +508,7 @@ export const AuditView: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-2">
               <label className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center space-x-2">
                 <Download className="w-4 h-4 text-emerald-600" />
-                <span>Exportar CV 100% Apto para ATS</span>
+                <span>Exportar CV en formato ATS-friendly</span>
               </label>
               <p className="text-[11px] text-slate-500 leading-snug">
                 Exporta el CV estructurado sin columnas rotas ni tablas que puedan ser descartadas.
@@ -577,8 +559,8 @@ export const AuditView: React.FC = () => {
                     </div>
                     <div className="text-sm font-bold mt-0.5">
                       {auditResult.overall_score >= 80
-                        ? "¡Este CV ya está optimizado para superar filtros ATS!"
-                        : "¿Quieres arreglar automáticamente este CV para obtener 100% de compatibilidad?"}
+                        ? "Este CV muestra un bajo riesgo estructural de parseo."
+                        : "¿Quieres normalizar este CV a un formato de bajo riesgo de parseo?"}
                     </div>
                     <div className="text-xs text-emerald-100/90 mt-0.5">
                       Reorganiza a 1 columna continua, normaliza encabezados y convierte viñetas al formato Google STAR.
@@ -592,14 +574,14 @@ export const AuditView: React.FC = () => {
                   className="shrink-0 bg-white hover:bg-emerald-50 text-emerald-950 font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-xs flex items-center space-x-2 disabled:opacity-50 cursor-pointer"
                 >
                   <Wand2 className="w-4 h-4 text-emerald-600" />
-                  <span>{isAutoFixing ? "Optimizando CV..." : "✨ Convertir a 100% ATS Friendly"}</span>
+                  <span>{isAutoFixing ? "Optimizando CV..." : "Convertir a formato ATS-friendly"}</span>
                 </button>
               </div>
 
               {autoFixSuccess && (
                 <div className="p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-bold flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>¡CV corregido con éxito! Se ha creado una versión con 1 columna continua y 100% ATS Friendly. Descárgalo a continuación:</span>
+                  <span>CV normalizado con éxito: versión de 1 columna continua y bajo riesgo de parseo. Descárgalo a continuación:</span>
                 </div>
               )}
 
@@ -607,7 +589,7 @@ export const AuditView: React.FC = () => {
               <div className="bg-emerald-950 text-white p-3.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs border border-emerald-800">
                 <div className="flex items-center space-x-2 text-xs font-semibold">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Descargar este CV (Formatos 100% Certificados ATS):</span>
+                  <span>Descargar este CV (formatos de bajo riesgo de parseo):</span>
                 </div>
                 <div className="flex items-center space-x-2 w-full sm:w-auto">
                   <button

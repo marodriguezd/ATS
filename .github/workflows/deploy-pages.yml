@@ -39,6 +39,12 @@ jobs:
       - name: Install dependencies
         run: pnpm --prefix frontend install --frozen-lockfile
 
+      - name: Verify frontend (lint + typecheck + tests)
+        run: |
+          pnpm --prefix frontend exec eslint src/lib/
+          pnpm --prefix frontend exec tsc --noEmit
+          pnpm --prefix frontend exec vitest run
+
       - name: Build static site with Next.js export
         env:
           GITHUB_PAGES: "true"

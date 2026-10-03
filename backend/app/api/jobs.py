@@ -1,6 +1,6 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -10,15 +10,18 @@ from app.core.scorer import ATSScorer
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 class JobCreate(BaseModel):
-    title: str
-    company: Optional[str] = None
-    raw_text: str
+    title: str = Field(min_length=1, max_length=200)
+    company: Optional[str] = Field(default=None, max_length=200)
+    raw_text: str = Field(min_length=1, max_length=20000)
 
 @router.post("/")
 def create_job(payload: JobCreate, db: Session = Depends(get_db)):
-    # Extract keywords
-    _, kw_details = ATSScorer._calculate_keywords("", payload.raw_text)
-    keywords = kw_details.get("total_extracted_keywords", 0)
+    # Extract keywords via the public scorer path (no private-method coupling)
+    score_probe = ATSScorer.score_all(
+        {"raw_text": "", "sections": {}, "contact_info": {}, "formatting_issues": []},
+        payload.raw_text,
+    )
+    kw_details = score_probe.get("keyword_details", {})
 
     db_job = JobDescription(
         title=payload.title,

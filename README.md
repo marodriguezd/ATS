@@ -1,129 +1,93 @@
-# 🎯 ATS Resume Suite
+# ATS Resume Suite
 
-Suite de alto rendimiento para auditoría, optimización y reconstrucción de Currículums 100% compatibles con filtros **ATS** (**Workday, Taleo, Greenhouse, Lever, iCIMS y SAP SuccessFactors**).
+Transparent, heuristic **ATS-readability and resume optimization suite**: analyzes how document structure, extraction order, keyword alignment, evidence quality, and formatting may affect automated screening workflows. It is **not** a reproduction of any proprietary ATS product (Workday, Taleo, Greenhouse, Lever, iCIMS, SAP SuccessFactors), and scores are **heuristic audit signals (0–100)**, not probabilities of acceptance.
 
-[![Deploy Next.js to GitHub Pages](https://github.com/marodriguezd/ATS/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/marodriguezd/ATS/actions/workflows/deploy-pages.yml)
-[![Demo en Vivo](https://img.shields.io/badge/Demo-GitHub%20Pages-emerald?style=flat&logo=github)](https://marodriguezd.github.io/ATS/)
+[![CI](https://github.com/marodriguezd/ATS/actions/workflows/ci.yml/badge.svg)](https://github.com/marodriguezd/ATS/actions/workflows/ci.yml)
+[![Demo](https://img.shields.io/badge/Demo-GitHub%20Pages-emerald?style=flat&logo=github)](https://marodriguezd.github.io/ATS/)
 
----
+Live demo (static standalone app, no backend): https://marodriguezd.github.io/ATS/
 
-## 🌟 Características Clave
+## What it does / does not do
 
-1. **Simulador de Parsers ATS Reales y Visor Dual**:
-   - **Modo Entrelazado (Lo que lee un ATS roto)**: simula cómo un parser desordena un PDF maquetado en 2 columnas o con tablas invisibles.
-   - **Modo Reconstruido**: lectura humana limpia ordenada por coordenadas espaciales.
+Does:
+- Extract text from PDF/DOCX/TXT with layout-risk signals (multi-column, tables, reading order).
+- Detect standard sections (ES/EN, accent-insensitive) with disjoint `experience` vs `projects` handling.
+- Extract contact info (email/phone/LinkedIn/GitHub) with validation (years are not phones).
+- Analyze a job description into REQUIRED / PREFERRED / CONTEXTUAL keyword signals.
+- Match keywords via documented lexical alias classes (EXACT / ALIAS / NORMALIZED / RELATED / ABSENT) — not true NLP semantics.
+- Score Parseability, Keyword Alignment, Evidence Strength, Formatting Risk with per-category explanations and limitations.
+- Offer SAFE auto-fix: reorder/normalize only. Missing data stays missing with explicit warnings; nothing factual is invented.
+- Export canonical ATS-friendly PDF (A4), DOCX, TXT with export→re-parse invariant tests.
+- Optional LLM-assisted rewriting under strict factuality rules (no invented metrics/employers/dates) with deterministic truthful fallback.
 
-2. **Diagnóstico Multidimensional (4 Capas - 0 a 100)**:
-   - **Parseabilidad**: detección de secciones estándar (`Experiencia`, `Educación`, `Habilidades`, `Proyectos`), datos de contacto legibles y encabezados normalizados.
-   - **Match de Palabras Clave**: motor de sinónimos semánticos acento-insensibles (`DAM` = `Desarrollo de Aplicaciones Multiplataforma`, `Postgres` = `PostgreSQL`, `K8s` = `Kubernetes`, `CI/CD` = `Integración continua`). Ponderación 70% en Experiencia/Proyectos vs 30% en listados de habilidades.
-   - **Métricas STAR e Impacto (Fórmula Google XYZ)**: detección de verbos de acción y cuantificadores numéricos (%, €, multiplicadores, volúmenes de usuarios).
-   - **Formato y Densidad**: análisis de páginas, recuento óptimo de palabras y ausencia de elementos bloqueantes.
+Does not:
+- Reproduce or guarantee behavior of any vendor ATS.
+- Promise rejection statistics or "100% compatible" outcomes.
+- Invent employment history, dates, degrees, contact details, or metrics.
 
-3. **1-Click Auto-Fixer ("Convertir a 100% ATS Friendly")**:
-   - Reorganiza cualquier CV fragmentado en una jerarquía lineal limpia de una sola columna sin alterar tu historial verídico.
-   - Eleva puntuaciones de 40-50% a **80-100%** de forma determinista.
+## Architecture
 
-4. **Perfiles y Ofertas DAM / Desarrollador Junior Integrados**:
-   - **Alejandro Navarro**: DAM - Backend Java & Spring Boot Junior (83% match).
-   - **Laura Gómez**: DAM - Mobile Android & Kotlin Junior.
-   - **David Morales**: DAM / DAW - Fullstack React & Python Junior.
-   - **Miguel Ángel Rodríguez**: Caso real analizado y optimizado.
-   - **Carlos Mendoza**: Senior Software Engineer.
+- **Backend** (`backend/`): FastAPI + SQLAlchemy/SQLite. Modules: `ats_parser`, `sections`, `synonyms`, `scorer`, `llm_engine`, `auto_fixer`, `exporter`. DB initializes deterministically via `init_db()` in app lifespan (no import side effects). API uses Pydantic schemas, upload validation (extension + magic bytes + size cap), explicit CORS origins (no `*` + credentials), and clear 4xx/5xx errors (missing resumes are 404, never substituted with demo data).
+- **Standalone** (`frontend/src/lib/`): canonical `domain.ts` mirrors backend behavior for GitHub Pages offline use; `standaloneEngine.ts` runs the same audit/autofix; `demoData` (synthetic `[DEMO]` fixtures) is strictly separated from user data; the API client marks which engine produced each result and fails loudly when a resume is absent.
+- **Conformance**: `shared/fixtures/ats_conformance.json` pins section/keyword expectations; backend `pytest` and frontend `vitest` both enforce them (semantic parity).
 
-5. **Exportador Nativo Certificado para ATS**:
-   - **PDF 1 Columna**: ReportLab con jerarquía tipográfica limpia y glifos estándar seguros (evita problemas de `(cid:127)`).
-   - **Word (.docx)**: márgenes estándar de 0.5" y estructura parseable.
-   - **Texto Plano / Markdown**: listo para copiar y pegar directamente en formularios de empleo.
+## Scoring methodology
 
----
+Weights with job: keyword 0.40 / evidence 0.25 / parseability 0.20 / format 0.15. Without job: evidence 0.40 / parseability 0.35 / format 0.25 (keyword excluded, scored 0). Penalties are documented in-code (e.g. multi-column −25 as *risk*, missing email −30). A bare number without an outcome cue does not count as achievement evidence. Every category returns explanation + limitations in the API payload.
 
-## 🌐 Demo en GitHub Pages
+## Factuality guarantees
 
-Puedes acceder a la versión desplegada en:
-👉 **[https://marodriguezd.github.io/ATS/](https://marodriguezd.github.io/ATS/)**
+1. Auto-Fix and LLM paths never introduce emails, phones, companies, dates, degrees, or metrics absent from the source.
+2. LLM prompts forbid invention; outputs are schema-validated and metric-gated (unsupported metrics rejected → truthful fallback).
+3. Only implemented providers are advertised (`gemini`, `heuristic`); `provider` actually selects behavior.
+4. Covered by `backend/tests/test_factuality.py` (10 invariants) which fail loudly on regression.
 
----
+## Security model
 
-## 🚀 Inicio Rápido Local
+- **Server mode**: prefer `GEMINI_API_KEY` env/secret management (`backend/.env.example`). `GET /api/settings/` returns configured-flags only, never key material. Provider allow-list enforced.
+- **Browser-only mode**: any key lives in `localStorage` (XSS-readable by design); the UI states this explicitly. No secrets are logged (Gemini key sent via header, not URL).
+- CORS: explicit origins from env; methods limited to GET/POST; uploads capped (`MAX_UPLOAD_BYTES`, default 10 MB) with magic-byte checks.
 
-### Requisitos
-- **Node.js** >= 18 (recomendado v20+)
-- **Python** 3.12
-- **pnpm** (o npm)
+## Local development
 
-### 1. Iniciar todo en un solo comando
+Prereqs: Python 3.12, Node 20+, pnpm.
+
 ```bash
-./start.sh
+./start.sh                 # venv + deps + backend :8000 + frontend :3000
+./start.sh --backend-only
+./start.sh --frontend-only
 ```
 
-Servicios levantados:
-- **Frontend Next.js**: [http://localhost:3000](http://localhost:3000)
-- **Backend FastAPI**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-- **Documentación Swagger / OpenAPI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
----
-
-### 2. Inicio manual paso a paso
-
-**Backend:**
+Manual:
 ```bash
-python3.12 -m venv backend/venv
+python3 -m venv backend/venv
 ./backend/venv/bin/pip install -r backend/requirements.txt
-./backend/venv/bin/uvicorn app.main:app --app-dir ./backend --host 0.0.0.0 --port 8000 --reload
-```
-
-**Frontend:**
-```bash
+./backend/venv/bin/uvicorn app.main:app --app-dir ./backend --host 127.0.0.1 --port 8000
+pnpm --prefix frontend install
 pnpm --prefix frontend dev
 ```
 
----
+## Testing
 
-## 🧪 Ejecutar Tests
-
-Suite de pruebas end-to-end (motor de sinónimos, spatial untangler, auto-fixer y exportadores):
 ```bash
-PYTHONPATH=./backend ./backend/venv/bin/python backend/test_e2e_advanced.py
+PYTHONPATH=./backend ./backend/venv/bin/python -m pytest backend/tests -q
+pnpm --prefix frontend exec vitest run
+pnpm --prefix frontend exec tsc --noEmit
+pnpm --prefix frontend exec eslint src/lib/
+GITHUB_PAGES=true pnpm --prefix frontend build
 ```
 
----
+## GitHub Pages deployment
 
-## ⚙️ Configuración de IA (Opcional)
+Pages hosts only the static standalone app (`frontend/out`). It does not host FastAPI. `deploy-pages.yml` runs lint + typecheck + tests before build; `ci.yml` additionally runs the backend suite on every push/PR.
 
-La suite funciona de forma autónoma con heurísticas algorítmicas sin coste. Si deseas reescritura asistida por LLM:
-1. Ve a la pestaña **Ajustes** en la aplicación web.
-2. Introduce tu clave de **Google Gemini** (gratuita en [Google AI Studio](https://aistudio.google.com/)) u OpenAI.
-3. Se almacena localmente de forma segura.
+## Limitations
 
----
+- Lexical alias matching, not semantic understanding; RELATED matches are down-weighted.
+- Layout analysis is heuristic (coordinate grouping); complex designs may still mislead.
+- SQLite is single-file local persistence; no migration framework (deterministic `create_all` via `init_db()`; Alembic recommended if the schema grows).
+- LLM quality depends on provider availability; offline fallback only rewords, never invents.
 
-## 📂 Estructura del Repositorio
+## License
 
-```
-ATS/
-├── .github/workflows/deploy-pages.yml   # Despliegue CI/CD automático en GitHub Pages
-├── backend/
-│   ├── app/
-│   │   ├── api/          # Endpoints (audit, resumes, jobs, settings)
-│   │   ├── core/         # ats_parser, column_untangler, scorer, synonyms, exporter, auto_fixer
-│   │   ├── db/           # Modelos SQLAlchemy y sesión SQLite
-│   │   └── main.py       # API FastAPI con CORS
-│   ├── requirements.txt
-│   └── test_e2e_advanced.py
-├── frontend/
-│   ├── src/
-│   │   ├── app/          # Next.js App Router (Turbopack)
-│   │   ├── components/   # AuditView, RawAtsView, StarOptimizer, BuilderView, ScoreGauge
-│   │   └── lib/api.ts    # Cliente HTTP y tipos TypeScript
-│   ├── next.config.ts    # Soporte exportación estática y dev proxy
-│   └── package.json
-├── ABOUT.md              # Documentación técnica en profundidad
-├── README.md
-└── start.sh
-```
-
----
-
-## 📄 Licencia
-
-Distribuido bajo la Licencia MIT. Consulta [LICENSE](LICENSE) para más información.
+MIT — see [LICENSE](LICENSE).

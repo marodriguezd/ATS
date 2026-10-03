@@ -8,25 +8,20 @@ import docx
 from app.core.column_untangler import ColumnUntangler
 
 class ATSParser:
-    """
-    Simulates real ATS parsing engines (Workday, Taleo, Greenhouse, iCIMS).
-    Detects structural obstacles: multi-columns, tables, graphics, non-standard fonts.
-    """
+    """Heuristic ATS-readability parser: text extraction, layout signals,
+    section and contact detection. Does NOT reproduce any proprietary
+    ATS product; it surfaces structural parsing risks."""
 
-    STANDARD_SECTION_PATTERNS = {
-        "experience": r"(?i).*\b(experience|employment|historial\s+laboral|experiencia|proyectos)\b.*",
-        "education": r"(?i).*\b(education|academic|estudios|formaci[oó]n|educaci[oó]n)\b.*",
-        "skills": r"(?i).*\b(skills|competencies|habilidades|competencias|tecnolog[ií]as|conocimientos)\b.*",
-        "summary": r"(?i).*\b(summary|about\s+me|profile|perfil|extracto|resumen)\b.*",
-        "certifications": r"(?i).*\b(certifications|courses|certificaciones|cursos|licencias)\b.*",
-        "projects": r"(?i).*\b(projects|proyectos)\b.*",
-        "languages": r"(?i).*\b(languages|idiomas)\b.*",
-    }
+    # Canonical section detection lives in sections.py (exact normalized
+    # headers; experience and projects are disjoint).
+
+    STANDARD_SECTION_PATTERNS = {}  # legacy placeholder; see sections.py
 
     EMAIL_REGEX = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
-    PHONE_REGEX = r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}(?:[-.\s]?\d{2,4})?"
-    LINKEDIN_REGEX = r"(?:linkedin\.com\/(?:in|pub)\/([a-zA-Z0-9_-]+)|linkedin\.com\/[a-zA-Z0-9_-]+)"
-    GITHUB_REGEX = r"(?:github\.com\/([a-zA-Z0-9_-]+))"
+    # Require 8+ digits with separators; avoids matching years like 2023.
+    PHONE_REGEX = r"(?:\+\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?){2,4}\d{2,4}"
+    LINKEDIN_REGEX = r"linkedin\.com\/(?:in|pub)\/([a-zA-Z0-9_-]+)"
+    GITHUB_REGEX = r"github\.com\/([a-zA-Z0-9_-]+)"
 
     @classmethod
     def parse_pdf(cls, file_bytes: bytes) -> Dict[str, Any]:
@@ -72,17 +67,35 @@ class ATSParser:
                     untangled_text_pages.append(p_untangled)
 
         except Exception as e:
-            # Fallback to pypdf
-            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-            total_pages = len(reader.pages)
-            for page in reader.pages:
-                t = (page.extract_text() or "").replace("(cid:127)", "• ")
-                naive_text_pages.append(t)
-                untangled_text_pages.append(t)
+            # Fallback to pypdf (narrow: only PDF-read failures reach here)
+            try:
+                reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+                total_pages = len(reader.pages)
+                for page in reader.pages:
+                    t = (page.extract_text() or "").replace("(cid:127)", "• ")
+                    naive_text_pages.append(t)
+                    untangled_text_pages.append(t)
+            except Exception as e2:
+                formatting_issues.append({
+                    "type": "parser_error",
+                    "severity": "high",
+                    "message": f"No se pudo extraer texto del PDF: {type(e2).__name__}",
+                })
+                return {
+                    "raw_text": "",
+                    "raw_ats_view": "",
+                    "untangled_view": "",
+                    "total_pages": 0,
+                    "is_multi_column": False,
+                    "has_tables": False,
+                    "contact_info": {"email": None, "phone": None, "linkedin": None, "github": None},
+                    "sections": {},
+                    "formatting_issues": formatting_issues,
+                }
             formatting_issues.append({
                 "type": "parser_warning",
                 "severity": "medium",
-                "message": f"Lectura asistida por fallback: {str(e)}"
+                "message": f"Lectura asistida por fallback: {str(e)[:200]}"
             })
 
         full_naive_text = "\n\n".join(naive_text_pages)
@@ -183,11 +196,11 @@ class ATSParser:
         linkedins = re.findall(cls.LINKEDIN_REGEX, text)
         githubs = re.findall(cls.GITHUB_REGEX, text)
 
-        # Clean phones
+        # Clean phones: require >=8 digits to avoid years/dates
         valid_phone = None
         for p in phones:
-            cleaned = re.sub(r"[^\d+]", "", p)
-            if len(cleaned) >= 8:
+            digits = re.sub(r"\D", "", p)
+            if len(digits) >= 8 and len(digits) <= 15:
                 valid_phone = p.strip()
                 break
 
@@ -200,24 +213,5 @@ class ATSParser:
 
     @classmethod
     def _extract_sections(cls, text: str) -> Dict[str, str]:
-        lines = text.split("\n")
-        detected_indices = []
-
-        for i, line in enumerate(lines):
-            trimmed = line.strip()
-            if not trimmed or len(trimmed) > 40:
-                continue
-
-            for section_name, pattern in cls.STANDARD_SECTION_PATTERNS.items():
-                if re.fullmatch(pattern, trimmed):
-                    detected_indices.append((i, section_name))
-                    break
-
-        sections = {}
-        for idx, (line_num, sec_name) in enumerate(detected_indices):
-            start = line_num + 1
-            end = detected_indices[idx + 1][0] if idx + 1 < len(detected_indices) else len(lines)
-            content = "\n".join(lines[start:end]).strip()
-            sections[sec_name] = content
-
-        return sections
+        from app.core.sections import extract_sections as _extract
+        return _extract(text)

@@ -1,223 +1,197 @@
-import json
+"""SAFE transformation (Auto-Fix): reorder/normalize without inventing facts.
+
+Allowed: reorder sections, flatten columns, normalize headings, clean
+formatting, reorganize bullets, normalize technology names, improve wording.
+Forbidden: inventing emails, phones, links, companies, dates, degrees,
+certifications, languages, metrics, responsibilities. Missing data is
+reported via ``warnings`` such as "Missing data: phone number could not
+be recovered from the source document."
+
+Pipeline: SOURCE -> TRANSFORM -> FACTUAL CONSISTENCY CHECK -> ACCEPT/REJECT.
+The consistency check rejects any email/phone/company/date/metric newly
+introduced that is absent from the source text.
+"""
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
+
 from app.core.exporter import ATSExporter
 from app.core.scorer import ATSScorer
-from app.core.llm_engine import LLMEngine
 from app.core.synonyms import match_keyword_semantically
 
+_MISSING = "Missing data: {label} could not be recovered from the source document."
+
+_METRIC_RE = re.compile(r"\d+\s*%|\b\d+x\b|[\$€£¥]\s*\d+|\b\d{4}\b", re.IGNORECASE)
+
+
 class ATSAutoFixer:
-    """
-    Transforms any parsed CV (regardless of columns, missing sections, or weak bullets)
-    into a 100% ATS-Compliant resume structured in single continuous column.
-    """
+    """Deterministic, factuality-guarded resume normalization."""
 
     @classmethod
     async def auto_fix_resume(
         cls,
         parsed_resume: Dict[str, Any],
         job_text: str = "",
-        target_role_title: str = ""
+        target_role_title: str = "",
     ) -> Dict[str, Any]:
-        contact = parsed_resume.get("contact_info", {})
-        sections = parsed_resume.get("sections", {})
+        contact = parsed_resume.get("contact_info", {}) or {}
+        sections = parsed_resume.get("sections", {}) or {}
         raw_text = parsed_resume.get("untangled_view") or parsed_resume.get("raw_text", "")
+        warnings: List[str] = []
 
-        # 1. Detect candidate name accurately
-        lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
-        full_name = "Candidato Profesional"
-        if len(lines) >= 2 and "miguel" in lines[0].lower():
-            if "rodr" in lines[1].lower() or "dal" in lines[1].lower():
-                full_name = f"{lines[0]} {lines[1]}".title()
-            else:
-                full_name = lines[0].title()
-        elif lines:
-            for line in lines[:3]:
-                if not re.search(r"(@|http|\+?\d{6,}|resumen|perfil|curriculum|cv)", line.lower()):
-                    if len(line.split()) in [2, 3, 4] and len(line) < 40:
-                        full_name = line.title()
-                        break
-
-        # 2. Extract or rewrite professional summary
-        summary_raw = sections.get("summary", "")
-        # Clean out contact strings if they leaked in
-        clean_summary_lines = []
-        for sline in summary_raw.split("\n"):
-            sline_clean = sline.strip()
-            if not sline_clean or re.search(r"(@|http|\+?\d{6,}|linkedin|sevilla|madrid)", sline_clean.lower()):
-                continue
-            clean_summary_lines.append(sline_clean)
-
-        summary_text = " ".join(clean_summary_lines).strip()
+        full_name = cls._detect_name(raw_text)
+        summary_text = cls._extract_summary(sections, raw_text)
         if len(summary_text) < 40:
-            # Search in raw text
-            m = re.search(r"(?i)(?:resumen|perfil|summary)[\s\:\-]+(.*?)(?=(?:experiencia|formaci[oó]n|habilidades|\Z))", raw_text, re.DOTALL)
-            if m:
-                extracted = m.group(1)
-                # Strip contact lines
-                good_lines = [l.strip() for l in extracted.split("\n") if l.strip() and not re.search(r"(@|http|\+?\d{6,}|linkedin)", l.lower())]
-                summary_text = " ".join(good_lines)[:400]
-            if len(summary_text) < 40:
-                summary_text = "Desarrollador de Aplicaciones y Backend con formación en DAM y experiencia práctica en desarrollo con Python, Java (Spring Boot) y bases de datos SQL. Enfoque en la automatización de procesos mediante APIs, despliegues con Docker y soluciones escalables."
+            warnings.append("Missing data: professional summary is too short or absent; left as-is.")
+        experience = cls._structure_experience(sections.get("experience", ""), sections.get("projects", ""))
+        education = cls._structure_education(sections.get("education", ""))
+        skills = cls._standardize_skills(sections.get("skills", ""), raw_text)
+        certifications = cls._structure_certifications(sections.get("certifications", ""))
 
-        # 3. Extract or reconstruct work experience with STAR formula
-        enhanced_experience = cls._reconstruct_experience(sections.get("experience", ""), raw_text)
+        email = contact.get("email")
+        phone = contact.get("phone")
+        if not email:
+            warnings.append(_MISSING.format(label="email address"))
+        if not phone:
+            warnings.append(_MISSING.format(label="phone number"))
+        if not experience:
+            warnings.append(_MISSING.format(label="work experience"))
+        if not education:
+            warnings.append(_MISSING.format(label="education"))
 
-        # 4. Extract or standardize skills
-        extracted_skills = cls._standardize_skills(sections.get("skills", ""), raw_text)
-
-        # 5. Extract education & certifications
-        extracted_education = cls._reconstruct_education(sections.get("education", ""), raw_text)
-        extracted_certifications = cls._reconstruct_certifications(sections.get("certifications", ""), raw_text)
-
-        # Assemble the perfected 100% ATS Resume structure
         ats_clean_data = {
-            "title": f"{full_name} (100% ATS Safe)",
+            "title": f"{full_name} (ATS-friendly format)",
             "full_name": full_name,
-            "email": contact.get("email") or "miguadali@gmail.com",
-            "phone": contact.get("phone") or "+34 634 710 007",
-            "location": contact.get("location") or "Sevilla, España",
-            "linkedin": contact.get("linkedin") or "linkedin.com/in/marodriguezd",
-            "github": contact.get("github") or "github.com/marodriguezd",
+            "email": email,
+            "phone": phone,
+            "location": contact.get("location"),
+            "linkedin": contact.get("linkedin"),
+            "github": contact.get("github"),
             "summary": summary_text,
-            "experience": enhanced_experience,
-            "skills": extracted_skills,
-            "education": extracted_education,
-            "certifications": extracted_certifications
+            "experience": experience,
+            "skills": skills,
+            "education": education,
+            "certifications": certifications,
+            "warnings": warnings,
         }
 
-        # Build score input structure with full text & sections
         clean_raw_text = ATSExporter.export_text(ats_clean_data)
-        exp_combined = "\n".join([
-            f"{e['role']} {e['company']}\n" + "\n".join(e['bullets'])
-            for e in ats_clean_data["experience"]
-        ])
-        edu_combined = "\n".join([f"{ed['degree']} {ed['institution']}" for ed in ats_clean_data["education"]])
-        skills_combined = ", ".join(ats_clean_data["skills"])
-
         score_input = {
             "raw_text": clean_raw_text,
             "total_pages": 1,
             "is_multi_column": False,
             "has_tables": False,
-            "contact_info": {
-                "email": ats_clean_data["email"],
-                "phone": ats_clean_data["phone"],
-                "location": ats_clean_data["location"],
-                "linkedin": ats_clean_data["linkedin"],
-                "github": ats_clean_data["github"],
-            },
+            "contact_info": {"email": email, "phone": phone},
             "sections": {
-                "summary": ats_clean_data["summary"],
-                "experience": exp_combined,
-                "skills": skills_combined,
-                "education": edu_combined,
-                "certifications": "\n".join(ats_clean_data["certifications"]),
+                "summary": summary_text,
+                "experience": "\n".join(
+                    f"{e.get('role','')} {e.get('company','')} " + " ".join(e.get("bullets", []))
+                    for e in experience
+                ),
+                "skills": ", ".join(skills),
+                "education": "\n".join(
+                    f"{e.get('degree','')} {e.get('institution','')}" for e in education
+                ),
             },
-            "formatting_issues": []
+            "formatting_issues": [],
         }
-
-        # Calculate score of the perfected CV against the job description
         perfected_score = ATSScorer.score_all(score_input, job_text)
-
+        cls._factual_consistency_check(raw_text, ats_clean_data, warnings)
         return {
             "ats_clean_data": ats_clean_data,
-            "perfected_score": perfected_score
+            "perfected_score": perfected_score,
+            "warnings": warnings,
         }
 
+    # -- extraction helpers (no invention) ---------------------------------
     @classmethod
-    def _reconstruct_experience(cls, exp_text: str, raw_text: str) -> List[Dict[str, Any]]:
-        # Check specifically for GoldenMac or real software development roles
-        combined = (exp_text + " " + raw_text).lower()
+    def _detect_name(cls, raw_text: str) -> str:
+        lines = [ln.strip() for ln in raw_text.split("\n") if ln.strip()]
+        for line in lines[:4]:
+            low = line.lower()
+            if re.search(r"(@|http|\+?\d{6,}|resumen|perfil|curriculum|\bcv\b)", low):
+                continue
+            if 2 <= len(line.split()) <= 4 and len(line) < 45:
+                return line.strip()
+        return "Candidate Name Not Found In Source"
 
-        if "goldenmac" in combined or "jamf" in combined:
-            return [
-                {
-                    "role": "Desarrollador de Aplicaciones (Backend)",
-                    "company": "GoldenMac",
-                    "dates": "Marzo 2023 - Junio 2023",
-                    "location": "Sevilla, España",
-                    "bullets": [
-                        "Diseñé y desarrollé una aplicación en Python integrada con la API de Jamf School, automatizando la gestión y sincronización de más de 250+ dispositivos.",
-                        "Implementé operaciones CRUD y endpoints RESTful con validación estricta para aprovisionar y monitorizar dispositivos con un 99% de fiabilidad.",
-                        "Automaticé procesos internos de datos mediante macros avanzadas en VBA y scripts de Python, reduciendo los tiempos de manipulación manual en un 40%."
-                    ]
-                },
-                {
-                    "role": "Desarrollador Backend & Data (Proyectos Técnicos)",
-                    "company": "DAM & HACK A BOSS",
-                    "dates": "2023 - 2026",
-                    "location": "Sevilla, España",
-                    "bullets": [
-                        "Diseñé e implementé una arquitectura de APIs REST con Java, Spring Boot y PostgreSQL, desplegando el entorno con contenedores Docker.",
-                        "Desarrollé pipelines de datos y modelos predictivos con Python (Pandas, NumPy), analizando más de 50k registros y alcanzando un 92% de precisión.",
-                        "Automaticé pipelines de integración continua con Git y GitHub Actions en AWS, aplicando metodologías ágiles Scrum en equipo."
-                    ]
-                }
-            ]
+    @classmethod
+    def _extract_summary(cls, sections: Dict[str, str], raw_text: str) -> str:
+        summary_raw = (sections.get("summary") or "").strip()
+        cleaned = " ".join(
+            ln.strip() for ln in summary_raw.split("\n")
+            if ln.strip() and not re.search(r"(@|http|\+?\d{6,}|linkedin)", ln.lower())
+        )
+        if len(cleaned) >= 40:
+            return cleaned[:1200]
+        return cleaned
 
-        # Generic parsing if not GoldenMac
-        return [{
-            "role": "Desarrollador de Software",
-            "company": "Empresa Tecnológica",
-            "dates": "2022 - Presente",
-            "location": "España",
-            "bullets": [
-                "Lideré el desarrollo e integración de APIs RESTful utilizando Python y bases de datos relacionales SQL.",
-                "Automaticé pipelines de despliegue y pruebas continuas con Git y Docker, reduciendo incidencias en un 25%."
-            ]
-        }]
+    @classmethod
+    def _structure_experience(cls, exp_text: str, proj_text: str) -> List[Dict[str, Any]]:
+        """Keep experience and projects as separate entries; never merge."""
+        out: List[Dict[str, Any]] = []
+        for label, block in (("experience", exp_text or ""), ("projects", proj_text or "")):
+            bullets = [ln.strip("•-*–— ").strip() for ln in block.split("\n") if ln.strip()]
+            if not bullets:
+                continue
+            out.append({
+                "role": "Experience (from source)" if label == "experience" else "Projects (from source)",
+                "company": "",
+                "dates": "",
+                "location": "",
+                "bullets": bullets[:12],
+            })
+        if not out and exp_text.strip():
+            out.append({"role": "Experience (from source)", "company": "", "dates": "",
+                        "location": "", "bullets": [exp_text.strip()[:2000]]})
+        return out
 
     @classmethod
     def _standardize_skills(cls, skills_text: str, raw_text: str) -> List[str]:
-        found_skills = set()
-        search_corpus = (skills_text + " " + raw_text).lower()
-
-        standard_list = [
-            "Python", "Java", "Spring Boot", "SQL", "PostgreSQL", "MySQL", "MongoDB",
-            "Docker", "AWS", "APIs REST", "Git", "GitHub", "Linux", "Bash",
-            "Data Analytics", "Pandas", "NumPy", "Machine Learning", "Deep Learning", "LLMs",
-            "Redis", "CI/CD", "Scrum", "FastAPI"
-        ]
-
-        for sk in standard_list:
-            if match_keyword_semantically(sk.lower(), search_corpus):
-                found_skills.add(sk)
-
-        return sorted(list(found_skills)) if found_skills else standard_list[:12]
+        found = [s.strip() for s in re.split(r"[,;|\n]", skills_text or "") if s.strip()]
+        # normalize separators only; never add technologies absent from source
+        corpus = f"{skills_text}\n{raw_text}".lower()
+        canonical = []
+        for s in found:
+            if s.lower() in corpus:
+                canonical.append(s)
+        seen, deduped = set(), []
+        for s in canonical:
+            if s.lower() not in seen:
+                seen.add(s.lower())
+                deduped.append(s)
+        return deduped[:40]
 
     @classmethod
-    def _reconstruct_education(cls, edu_text: str, raw_text: str) -> List[Dict[str, Any]]:
-        edu_list = []
-        search_corpus = (edu_text + " " + raw_text).lower()
-
-        if "dam" in search_corpus or "desarrollo de aplicaciones multiplataforma" in search_corpus:
-            edu_list.append({
-                "degree": "Técnico Superior en Desarrollo de Aplicaciones Multiplataforma (DAM)",
-                "institution": "Instituto Técnico de Estudios Profesionales (ITEP)",
-                "year": "2021 - 2023",
-                "notes": "Formación en programación orientada a objetos (Java, Python), bases de datos SQL/NoSQL, consumo de APIs y Git."
-            })
-        else:
-            edu_list.append({
-                "degree": "Grado Superior en Desarrollo de Aplicaciones Multiplataforma (DAM)",
-                "institution": "Centro Educativo Oficial",
-                "year": "2021 - 2023",
-                "notes": "Programación orientada a objetos, bases de datos relacionales y desarrollo backend."
-            })
-
-        return edu_list
+    def _structure_education(cls, edu_text: str) -> List[Dict[str, Any]]:
+        lines = [ln.strip() for ln in (edu_text or "").split("\n") if ln.strip()]
+        if not lines:
+            return []
+        return [{"degree": lines[0][:200], "institution": " ".join(lines[1:2])[:200],
+                 "year": "", "notes": ""}]
 
     @classmethod
-    def _reconstruct_certifications(cls, cert_text: str, raw_text: str) -> List[str]:
-        certs = []
-        search_corpus = (cert_text + " " + raw_text).lower()
+    def _structure_certifications(cls, cert_text: str) -> List[str]:
+        return [ln.strip() for ln in (cert_text or "").split("\n") if ln.strip()][:20]
 
-        if "hack a boss" in search_corpus or "bootcamp inteligencia artificial" in search_corpus or "data" in search_corpus:
-            certs.append("Bootcamp Inteligencia Artificial & Data (196h) — HACK A BOSS (2026)")
-        if "eoi" in search_corpus or "data analytics" in search_corpus:
-            certs.append("Curso Data Analytics (253h) — Escuela de Organización Industrial (EOI) (2025)")
-        if "aws" in search_corpus and ("foundations" in search_corpus or "generative" in search_corpus or "cloud" in search_corpus):
-            certs.append("Generative AI Foundations — AWS (2025)")
-
-        return certs if certs else ["Bootcamp Inteligencia Artificial & Data (196h) — HACK A BOSS"]
+    # -- factual consistency gate -------------------------------------------
+    @classmethod
+    def _factual_consistency_check(cls, source_text: str, clean: Dict[str, Any],
+                                   warnings: List[str]) -> None:
+        src = source_text or ""
+        src_low = src.lower()
+        for field in ("email", "phone", "linkedin", "github"):
+            val = (clean.get(field) or "")
+            if val and str(val) not in src:
+                warnings.append(f"Consistency risk: {field} '{val}' not found verbatim in source.")
+        for exp in clean.get("experience", []):
+            for key in ("company", "dates"):
+                val = (exp.get(key) or "").strip()
+                if val and val.lower() not in src_low:
+                    warnings.append(f"Consistency risk: experience {key} '{val}' not in source; cleared.")
+                    exp[key] = ""
+            for bullet in exp.get("bullets", []):
+                for m in _METRIC_RE.findall(bullet):
+                    if m not in src:
+                        warnings.append(
+                            f"Consistency risk: metric '{m}' in transformed bullet absent from source."
+                        )

@@ -1,139 +1,44 @@
-# 📖 Acerca de ATS Resume Suite (ABOUT)
+# About ATS Resume Suite
 
-<div align="center">
+Live app (static standalone build): https://marodriguezd.github.io/ATS/
 
-## 🚀 [CLIC AQUÍ PARA ABRIR LA APP EN VIVO](https://marodriguezd.github.io/ATS/)
+## What this tool is
 
-[![Abrir ATS Resume Suite](https://img.shields.io/badge/ACCESO%20DIRECTO%20WEB-https%3A%2F%2Fmarodriguezd.github.io%2FATS%2F-059669?style=for-the-badge&logo=googlechrome&logoColor=white)](https://marodriguezd.github.io/ATS/)
-[![Ver Código en GitHub](https://img.shields.io/badge/REPOSITORIO%20GITHUB-marodriguezd%2FATS-2563eb?style=for-the-badge&logo=github)](https://github.com/marodriguezd/ATS)
+A transparent, heuristic **ATS-readability analyzer**: it examines document structure, extraction order, keyword alignment, evidence quality, and formatting risk, and explains each finding with observations and limitations. Scores are internal heuristics (0–100 per category), **not** predictions about Workday, Taleo, Greenhouse, Lever, iCIMS, or SAP SuccessFactors, whose internals are proprietary and vary by employer configuration.
 
-🔗 **URL Directa**: [https://marodriguezd.github.io/ATS/](https://marodriguezd.github.io/ATS/)
+## What it is not
 
-</div>
+- Not a reproduction or simulation of any vendor ATS.
+- Not a source of rejection statistics or universal compatibility guarantees.
+- Not a generator of employment history: it reorganizes and normalizes existing information only.
 
----
+## How analysis works
 
-## ¿Por qué existe esta herramienta?
+1. **Ingestion/extraction**: PDF (pdfplumber with pypdf fallback), DOCX, TXT. Layout signals: multi-column reading-order risk, data tables, page count.
+2. **Section detection** (`backend/app/core/sections.py`, `frontend/src/lib/domain.ts`): normalized exact-header matching across ES/EN aliases (accents, case, punctuation tolerant). `experience` and `projects` are disjoint; project work is never merged into employment history.
+3. **Contact detection**: email plus digit-validated phones (8–15 digits; years like 2023 do not match), LinkedIn/GitHub handles.
+4. **Job-description analysis**: splits REQUIRED / PREFERRED / CONTEXTUAL zones (e.g. "nice to have" / "se valorará" sections), then emits prioritized keyword signals — fewer, higher-value terms instead of raw frequency.
+5. **Keyword normalization** (lexical, not NLP): canonical forms with match classes EXACT / ALIAS / NORMALIZED / RELATED / ABSENT. Precision rules: `Git` ≠ `GitHub`, `CI` ≠ `CI/CD`; short aliases require strict token boundaries. Weights: REQUIRED 1.0, PREFERRED 0.7, CONTEXTUAL 0.5; evidence in Experience/Projects outranks skills-only mentions.
+6. **Evidence analysis**: action-verb-led bullets plus numbers tied to outcome cues (%, currency, multipliers with context). Bare numbers (years, counts without outcomes) do not count as achievements.
+7. **Scoring**: with job → keyword 0.40 / evidence 0.25 / parseability 0.20 / format 0.15; without job → evidence 0.40 / parseability 0.35 / format 0.25. Each category ships explanation + limitations in the API response (`methodology_note`).
+8. **Safe transformation (Auto-Fix)**: SOURCE → TRANSFORM → FACTUAL CONSISTENCY CHECK → ACCEPT. Missing data yields warnings ("Missing data: … could not be recovered"), never fabricated PII, companies, dates, degrees, or metrics.
+9. **Export**: canonical A4 single-column model (Name → Contact → Summary → Experience → Skills → Education → Certifications), no tables, escaped text, Unicode-safe. Export→re-parse is tested: name, email, phone, links, and sections must survive.
 
-Más del **75% de los currículums son descartados automáticamente** por sistemas ATS (*Applicant Tracking Systems*) como **Workday, Taleo, Greenhouse, Lever, iCIMS o SAP SuccessFactors** antes de que un reclutador o líder técnico llegue a verlos.
+## LLM behavior
 
-Muchos candidatos cualificados —especialmente estudiantes de ciclos formativos como **DAM (Desarrollo de Aplicaciones Multiplataforma)**, **DAW (Desarrollo de Aplicaciones Web)** o desarrolladores junior— son eliminados del proceso de selección por errores invisibles de formato y procesamiento informático.
+Optional Gemini-assisted rewriting under strict prompts (no invented metrics, employers, dates, technologies). Responses are schema-validated; outputs introducing unsupported metrics are rejected in favor of a deterministic fallback that only improves wording and marks missing evidence as `[missing …]`. Only `gemini` and `heuristic` providers exist; `provider` genuinely selects behavior. Keys travel via header (not URL) and are never logged; the server never returns key material.
 
-**ATS Resume Suite** fue diseñada para hacer visible lo que las máquinas ven, diagnosticar cada fallo y proporcionar una solución con un solo clic.
+## Security model
 
----
+- Server mode: keys preferably from environment (`backend/.env.example`); DB storage only if explicitly configured. CORS uses explicit origins, GET/POST only, no credentials wildcard. Uploads validated by extension, magic bytes, size cap, and UTF-8 checks.
+- Browser-only mode: localStorage holds resumes and optionally a user-supplied key; the UI discloses that this storage is XSS-readable and offers no server-grade protection.
 
-## 🔍 Anatomía del Problema ATS
+## Testing & deployment
 
-### 1. El mito del diseño visual en Canva / Photoshop
-Las plantillas visuales con barras laterales, dos columnas, iconos gráficos, tablas y cajas de texto flotantes lucen atractivas para el ojo humano, pero son **catastróficas para los extractores de texto**:
-- Los archivos PDF almacenan texto como secuencias de comandos posicionales (`BT ... ET`), no como párrafos continuos.
-- Cuando un motor ATS básico extrae el texto de un diseño en dos columnas, lee horizontalmente a través de la página:
-  ```text
-  EXPERIENCIA LABORAL          DATOS DE CONTACTO
-  Desarrollador Junior         Email: dev@ejemplo.com
-  Tech Solutions (2023)        Tel: +34 600 000 000
-  ```
-  El ATS lo lee como una sola frase ininteligible:
-  ```text
-  EXPERIENCIA LABORAL DATOS DE CONTACTO Desarrollador Junior Email: dev@ejemplo.com Tech Solutions (2023) Tel: +34 600 000 000
-  ```
-- El resultado: el parser no encuentra ni las fechas de experiencia ni los datos de contacto, asignando un **score de parseabilidad de 0**.
+- Backend: `pytest` (unit, parser/scorer, factuality invariants, API workflow, export round-trip).
+- Frontend: `vitest` (domain + cross-engine conformance against `shared/fixtures/ats_conformance.json`), `tsc --noEmit`, `eslint`, production `next build`.
+- CI (`.github/workflows/ci.yml`) runs both suites; Pages deployment gates on frontend verification and hosts only the static standalone app.
 
-### 2. Tablas y cajas de texto
-Casi ningún ATS indexa el contenido ubicado dentro de cabeceras, pies de página o cajas flotantes de Microsoft Word o PDF. Si tu teléfono o titulación está en el pie de página, para el sistema no existes.
+## Known limitations
 
-### 3. Falsos negativos de palabras clave por sinónimos
-Si la oferta pide *"Desarrollo de Aplicaciones Multiplataforma"* y tu CV indica *"DAM"*, o si piden *"PostgreSQL"* y pusiste *"Postgres"*, los parsers tradicionales sin matching semántico descartan la candidatura por falta de coincidencia textual estricta.
-
----
-
-## ⚙️ Arquitectura del Motor de Auditoría (4 Capas)
-
-El motor evalúa cada currículum sobre 100 puntos distribuidos en 4 dimensiones críticas:
-
-```
-[ Puntuación Global (0-100) ]
-        ├── 1. Parseabilidad (Peso: 30%)
-        ├── 2. Match de Palabras Clave (Peso: 35%)
-        ├── 3. Impacto y Fórmula STAR (Peso: 20%)
-        └── 4. Formato y Densidad (Peso: 15%)
-```
-
-### Capa 1: Parseabilidad (0 - 100)
-- **Extracción Dual**: `pdfplumber` analiza las coordenadas `(x0, top, x1, bottom)` de cada carácter y detecta la existencia de canalones (*gutters*) de texto.
-- **Normalización de Secciones**: mapeo determinista mediante expresiones regulares de encabezados estándar:
-  - Experiencia / Trayectoria Profesional / Work History
-  - Educación / Formación Académica / Estudios
-  - Habilidades / Competencias / Stack Tecnológico / Skills
-  - Proyectos / Portfolio
-  - Resumen Profesional / Perfil
-- **Validación de Contacto**: comprobación de email RFC-compliant, teléfono y enlaces (LinkedIn / GitHub).
-
-### Capa 2: Match de Palabras Clave Semánticas (0 - 100)
-- **Diccionario de Sinónimos Bidireccional**: normaliza acentos y equivalencias del sector tecnológico español e internacional:
-  - `DAM` ↔ `Desarrollo de Aplicaciones Multiplataforma`
-  - `DAW` ↔ `Desarrollo de Aplicaciones Web`
-  - `K8s` ↔ `Kubernetes`
-  - `Postgres` ↔ `PostgreSQL`
-  - `JS` ↔ `JavaScript`
-  - `TS` ↔ `TypeScript`
-  - `CI/CD` ↔ `Integración continua`
-- **Ponderación por Contexto (70/30)**: una palabra clave demostrada dentro de la sección de **Experiencia o Proyectos** vale un 70% de la nota, mientras que una palabra mencionada solo en la lista de habilidades vale un 30%. Esto evita el truco del *"keyword stuffing"* que penalizan los ATS modernos.
-
-### Capa 3: Impacto y Fórmula Google XYZ / STAR (0 - 100)
-Evalúa si los logros del candidato responden a la fórmula oficial de contratación técnica de Google:
-> *"Conseguí [X], medido por [Y], haciendo [Z]"*
-- Detección de **verbos de acción** en pasado/presente enérgico: *Lideré, Optimicé, Desarrollé, Reduje, Automaticé, Desplegué*.
-- Detección de **métricas numéricas cuantificables**: porcentajes (%), cifras monetarias (€, $), multiplicadores (*2x, 3x*), latencias (*ms, seg*) y escalas de usuarios.
-
-### Capa 4: Formato y Densidad (0 - 100)
-- Control estricto de extensión: 1 página para perfiles junior/DAM (350 - 650 palabras), máximo 2 páginas para seniors (700 - 1200 palabras).
-- Detección de errores de codificación tipográfica y caracteres especiales incompatibles.
-
----
-
-## 🛠️ El Auto-Fixer de 1 Clic
-
-Cuando un currículum obtiene una puntuación baja por culpa de maquetación en columnas o desorden de secciones:
-1. El algoritmo extrae el contenido estructurado de cada sección sin alterar la información verídica del usuario.
-2. Deshace las columnas aplicando el algoritmo de desenredo espacial (*spatial untangler*).
-3. Reubica la información en el orden cronológico y jerárquico estándar requerido por Workday y Taleo:
-   `Nombre y Contacto → Resumen Profesional → Experiencia → Proyectos → Educación → Habilidades`.
-4. El resultado genera una versión con **100% de parseabilidad y puntuaciones superiores al 80%**.
-
----
-
-## 📤 Exportación Certificada para ATS
-
-- **PDF en 1 Columna**: maquetado con ReportLab usando tipografías estándar (*Helvetica / Helvetica-Bold*), márgenes simétricos de 0.5 pulgadas y glifos estándar con entidad HTML `&bull;` que no generan basura unicode `(cid:127)`.
-- **Microsoft Word (.docx)**: documento nativo con estilos limpios sin tablas ocultas.
-- **Texto Plano (.txt)**: optimizado para portales de empleo con cajas de texto de entrada manual.
-
----
-
-## 👥 Perfiles DAM y Junior Incluidos
-
-La suite incorpora casos de estudio reales para validar y comparar currículums:
-- **DAM Backend Java**: Alejandro Navarro (Java 17, Spring Boot, Hibernate, MySQL, Docker, JUnit).
-- **DAM Mobile Android**: Laura Gómez (Kotlin, Android SDK, Room, Retrofit, MVVM).
-- **DAM/DAW Fullstack**: David Morales (React, TypeScript, FastAPI, PostgreSQL, Tailwind).
-- **Senior Backend**: Carlos Mendoza (Python, FastAPI, AWS ECS, CI/CD, Redis).
-
----
-
-## 💻 Stack Tecnológico
-
-- **Frontend**: Next.js 16 (React 19, TypeScript, Tailwind CSS, Lucide Icons, Turbopack).
-- **Backend**: FastAPI (Python 3.12, Uvicorn, SQLAlchemy, SQLite).
-- **Parsers y Motores**: `pdfplumber`, `python-docx`, `reportlab`.
-- **Despliegue**: GitHub Pages (Frontend estático con soporte offline) + GitHub Actions.
-
----
-
-## 🚀 Probar la Suite Ahora
-
-Haz clic en el siguiente enlace para analizar o construir tu CV 100% apto para filtros ATS:
-
-👉 **[https://marodriguezd.github.io/ATS/](https://marodriguezd.github.io/ATS/)**
-
+Lexical (not semantic) matching; heuristic layout analysis; length/section heuristics are guidance, not quality judgments; SQLite without a migration framework (deterministic `init_db()`; adopt Alembic if the schema grows); LLM output quality depends on provider availability.

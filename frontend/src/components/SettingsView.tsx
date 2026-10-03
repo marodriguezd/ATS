@@ -158,7 +158,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsSaved }) =
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start space-x-2 text-[11px] text-slate-600">
             <Shield className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <span>
-              Tus claves se guardan localmente en la base de datos SQLite y nunca se transmiten a servidores externos no autorizados.
+              Modo navegador: la clave se guarda en localStorage (legible por cualquier script de la pagina). Evita claves con permisos amplios; prefiere el modo servidor con variables de entorno. El servidor nunca devuelve claves completas ni parciales.
             </span>
           </div>
 

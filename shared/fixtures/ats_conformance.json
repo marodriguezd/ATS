@@ -1,0 +1,62 @@
+{
+  "cases": [
+    {
+      "expected_sections": [
+        "experience"
+      ],
+      "id": "sections-experience-vs-projects",
+      "input": "WORK EXPERIENCE\nBackend intern | DemoLabs (2023)\n* Built REST endpoints.\n\nPROJECTS\nDemo app with Python.",
+      "notes": "Project headings must not be classified as employment history."
+    },
+    {
+      "expected_sections": [
+        "experience",
+        "education",
+        "skills"
+      ],
+      "id": "sections-bilingual-accents",
+      "input": "EXPERIENCIA LABORAL\nSoporte tecnico.\n\nFORMACIÓN ACADÉMICA\nDAM.\n\nHABILIDADES TÉCNICAS\nPython, SQL.",
+      "notes": "Bilingual headers with accents and case variation."
+    },
+    {
+      "expected_match": "ALIAS",
+      "id": "kw-postgres",
+      "keyword": "PostgreSQL",
+      "notes": "Legitimate alias.",
+      "text": "Worked with Postgres and SQL daily."
+    },
+    {
+      "expected_match": "ALIAS",
+      "id": "kw-k8s",
+      "keyword": "Kubernetes",
+      "text": "Deployed to k8s clusters."
+    },
+    {
+      "expected_match": "EXACT",
+      "id": "kw-cicd-variant",
+      "keyword": "CI/CD",
+      "text": "Built ci-cd pipelines with GitHub Actions."
+    },
+    {
+      "expected_match": "ABSENT",
+      "id": "kw-git-vs-github",
+      "keyword": "GitHub",
+      "notes": "Git alone must not equal GitHub.",
+      "text": "Used git for version control."
+    },
+    {
+      "expected_match": "ABSENT",
+      "id": "kw-ci-vs-cicd",
+      "keyword": "CI/CD",
+      "notes": "CI alone must not equal CI/CD.",
+      "text": "Ran CI builds on every push."
+    },
+    {
+      "expected_match": "ALIAS",
+      "id": "kw-dam",
+      "keyword": "DAM",
+      "text": "Desarrollo de Aplicaciones Multiplataforma (2021-2023)."
+    }
+  ],
+  "description": "Canonical cross-engine conformance vectors. Both the Python backend and the TypeScript standalone engine must satisfy every case."
+}

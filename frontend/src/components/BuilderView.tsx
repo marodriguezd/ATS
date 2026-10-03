@@ -32,14 +32,14 @@ interface EducationItem {
 }
 
 export const BuilderView: React.FC = () => {
-  const [fullName, setFullName] = useState("Carlos Mendoza");
+  const [fullName, setFullName] = useState("Nombre de ejemplo");
   const [email, setEmail] = useState("carlos.mendoza@email.com");
   const [phone, setPhone] = useState("+34 612 345 678");
   const [location, setLocation] = useState("Madrid, España");
   const [linkedin, setLinkedin] = useState("linkedin.com/in/carlosmendoza");
   const [github, setGithub] = useState("github.com/carlosmendoza");
   const [summary, setSummary] = useState(
-    "Senior Software Engineer con más de 7 años de experiencia diseñando arquitecturas escalables en la nube. Especialista en microservicios de alto rendimiento y pipelines de CI/CD automatizados."
+    "Perfil de ejemplo. Sustituye este texto por tu propia experiencia real; la herramienta nunca debe inventar historial, fechas ni metricas."
   );
 
   const [skills, setSkills] = useState<string>([
@@ -175,9 +175,9 @@ export const BuilderView: React.FC = () => {
       github,
       summary,
       sections: {
-        "Experiencia Profesional": expLines,
-        "Habilidades Técnicas": skillsArray.join(", "),
-        "Educación": eduLines,
+        "WORK EXPERIENCE": expLines,
+        "TECHNICAL SKILLS": skillsArray.join(", "),
+        "EDUCATION": eduLines,
       },
     };
 
@@ -225,10 +225,10 @@ export const BuilderView: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
             <FileCheck className="w-5 h-5 text-emerald-600" />
-            <span>Creador & Editor de CV 100% Compatible con ATS</span>
+            <span>Creador y editor de CV en formato ATS-friendly</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Estructura semántica sin columnas ni tablas que garantiza 100% de legibilidad en Workday, Taleo y Greenhouse.
+            Estructura de una columna sin tablas: formato de bajo riesgo de parseo (senyal heuristica, sin garantias sobre productos propietarios).
           </p>
         </div>
 

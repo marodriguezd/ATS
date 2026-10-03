@@ -1,7 +1,10 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.db.session import Base
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 class Resume(Base):
     __tablename__ = "resumes"
@@ -11,8 +14,8 @@ class Resume(Base):
     file_type = Column(String(50), default="json")  # pdf, docx, json
     raw_text = Column(Text, nullable=False)
     parsed_json = Column(Text, nullable=True) # JSON with structured fields
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     analyses = relationship("Analysis", back_populates="resume", cascade="all, delete-orphan")
 
@@ -24,7 +27,7 @@ class JobDescription(Base):
     company = Column(String(255), nullable=True)
     raw_text = Column(Text, nullable=False)
     keywords_json = Column(Text, nullable=True) # Extracted keywords
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     analyses = relationship("Analysis", back_populates="job", cascade="all, delete-orphan")
 
@@ -43,7 +46,7 @@ class Analysis(Base):
 
     raw_ats_view = Column(Text, nullable=True)
     analysis_details_json = Column(Text, nullable=True) # detailed breakdowns & suggestions
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     resume = relationship("Resume", back_populates="analyses")
     job = relationship("JobDescription", back_populates="analyses")
