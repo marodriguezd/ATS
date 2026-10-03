@@ -24,7 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
               ATS Resume Suite
             </h1>
             <p className="text-xs text-slate-500 font-medium">
-              Auditoría & Optimización 100% Apto para ATS
+              Auditoría y optimización heurística de CVs
             </p>
           </div>
         </div>

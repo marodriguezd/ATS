@@ -39,7 +39,7 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
-        <p>ATS Resume Suite — Optimizador de CVs para Workday, Taleo, Greenhouse y Lever</p>
+        <p>ATS Resume Suite — Transparent, heuristic resume readability analyzer and optimizer</p>
       </footer>
     </div>
   );

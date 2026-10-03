@@ -23,7 +23,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ score, breakdown }) => {
   const getScoreBadge = (val: number) => {
     if (val >= 80) {
       return {
-        text: "100% Apto para ATS",
+        text: "Legibilidad alta",
         icon: <CheckCircle2 className="w-4 h-4 text-emerald-600 mr-1" />,
         badgeClass: "bg-emerald-100 text-emerald-800"
       };
@@ -74,7 +74,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ score, breakdown }) => {
             </div>
             <h2 className="text-xl font-bold text-slate-900 mt-1">Puntuación ATS Global</h2>
             <p className="text-xs text-slate-500 max-w-sm">
-              Simulación basada en los filtros y parsers de Workday, Taleo, Greenhouse y Lever.
+              Puntuación heurística de legibilidad (0–100); no reproduce ningún ATS propietario.
             </p>
           </div>
         </div>
