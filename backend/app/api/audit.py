@@ -34,6 +34,13 @@ class SummaryOptimizeRequest(BaseModel):
     key_skills: Optional[List[str]] = Field(default_factory=list, max_length=30)
     provider: Optional[str] = "gemini"
 
+class AssistantRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    resume_text: Optional[str] = Field(default="", max_length=8000)
+    job_text: Optional[str] = Field(default="", max_length=20000)
+    audit_summary: Optional[str] = Field(default="", max_length=3000)
+    provider: Optional[str] = "local_hf"
+
 def _load_parsed(resume) -> dict:
     try:
         return json.loads(resume.parsed_json) if resume.parsed_json else {
@@ -105,6 +112,20 @@ async def optimize_summary(payload: SummaryOptimizeRequest):
             job_description=payload.job_text,
             key_skills=payload.key_skills,
             provider=payload.provider or "gemini",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+@router.post("/assistant")
+async def assistant(payload: AssistantRequest):
+    try:
+        result = await LLMEngine.generate_assistant_answer(
+            question=payload.question,
+            resume_text=payload.resume_text or "",
+            job_text=payload.job_text or "",
+            audit_summary=payload.audit_summary or "",
+            provider=payload.provider or "local_hf",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -22,6 +22,7 @@ import { downloadClientPdf, downloadClientDocx, downloadClientTxt } from "@/lib/
 import { ScoreGauge } from "./ScoreGauge";
 import { RawAtsView } from "./RawAtsView";
 import { StarOptimizer } from "./StarOptimizer";
+import { AssistantView } from "./AssistantView";
 
 const JOB_TEMPLATES = [
   {
@@ -119,7 +120,7 @@ export const AuditView: React.FC = () => {
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [rawAtsView, setRawAtsView] = useState<string>("");
   const [untangledView, setUntangledView] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"overview" | "keywords" | "raw" | "star">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "keywords" | "raw" | "star" | "assistant">("overview");
   const [savedResumes, setSavedResumes] = useState<any[]>([]);
   const [isAutoFixing, setIsAutoFixing] = useState(false);
   const [autoFixSuccess, setAutoFixSuccess] = useState(false);
@@ -663,6 +664,18 @@ export const AuditView: React.FC = () => {
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                   <span>Optimizador STAR & IA</span>
                 </button>
+
+                <button
+                  onClick={() => setActiveTab("assistant")}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === "assistant"
+                      ? "bg-white text-emerald-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Asistente local</span>
+                </button>
               </div>
 
               {/* Sub-tab 1: Overview & Diagnostics */}
@@ -817,6 +830,15 @@ export const AuditView: React.FC = () => {
                   weakBullets={auditResult.impact_details.weak_bullets_examples}
                   missingKeywords={auditResult.keyword_details.missing_keywords}
                   jobDescription={jobText}
+                />
+              )}
+
+              {/* Sub-tab 5: Local assistant */}
+              {activeTab === "assistant" && (
+                <AssistantView
+                  resumeText={rawAtsView || untangledView}
+                  jobText={jobText}
+                  auditResult={auditResult}
                 />
               )}
             </>

@@ -9,7 +9,7 @@ from app.config import settings
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
-ALLOWED_PROVIDERS = ("gemini", "heuristic")
+ALLOWED_PROVIDERS = ("gemini", "heuristic", "local_hf")
 
 
 class SettingsUpdate(BaseModel):
@@ -34,10 +34,18 @@ def get_settings(db: Session = Depends(get_db)):
     provider = provider_db.value if provider_db else settings.DEFAULT_LLM_PROVIDER
 
     # Never return full or partial secrets: only configured flags.
+    try:
+        from app.core.llm_engine import LLMEngine as _LLMEngine
+
+        local_supported = _LLMEngine._local_available()
+    except Exception:
+        local_supported = False
     return {
         "gemini_api_key_configured": bool(gemini_key),
         "openai_api_key_configured": False,
         "default_provider": provider,
+        "local_hf_supported": local_supported,
+        "local_hf_model": settings.LOCAL_HF_MODEL_ID,
         "security_note": (
             "Server mode: keys are read from environment variables when available. "
             "Keys sent here are stored server-side; prefer environment/secret management."

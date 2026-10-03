@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Sparkles, ArrowRight, Copy, Check, Wand2, Lightbulb, Target } from "lucide-react";
-import { api } from "@/lib/api";
+import { Sparkles, ArrowRight, Copy, Check, Wand2, Lightbulb, Target, Cpu } from "lucide-react";
+import { api, isLocalLlmEnabled, getLocalModelId } from "@/lib/api";
 
 interface StarOptimizerProps {
   weakBullets?: string[];
@@ -42,7 +42,8 @@ export const StarOptimizer: React.FC<StarOptimizerProps> = ({
     setIsRewriting(true);
     setRewriteResult(null);
     try {
-      const res = await api.rewriteBullet(selectedBullet, roleContext, selectedKeywords);
+      const provider = isLocalLlmEnabled() ? "local" : undefined;
+      const res = await api.rewriteBullet(selectedBullet, roleContext, selectedKeywords, provider);
       setRewriteResult(res);
     } catch (e) {
       console.error(e);
@@ -55,7 +56,8 @@ export const StarOptimizer: React.FC<StarOptimizerProps> = ({
     setIsGeneratingSummary(true);
     setSummaryResult(null);
     try {
-      const res = await api.optimizeSummary(summaryInput, jobDescription, missingKeywords);
+      const provider = isLocalLlmEnabled() ? "local" : undefined;
+      const res = await api.optimizeSummary(summaryInput, jobDescription, missingKeywords, provider);
       setSummaryResult(res);
     } catch (e) {
       console.error(e);
@@ -81,6 +83,12 @@ export const StarOptimizer: React.FC<StarOptimizerProps> = ({
           <p className="text-xs text-slate-500 mt-0.5">
             Convierte tareas pasivas en viñetas de alto rendimiento con impacto cuantificado y keywords.
           </p>
+          {typeof window !== "undefined" && isLocalLlmEnabled() && (
+            <p className="text-[11px] text-emerald-700 font-semibold mt-1 flex items-center space-x-1">
+              <Cpu className="w-3.5 h-3.5" />
+              <span>Local {getLocalModelId()} · privado en tu dispositivo</span>
+            </p>
+          )}
         </div>
 
         <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg self-start sm:self-auto">

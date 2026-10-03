@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Key, Shield, Sparkles, Check, Save } from "lucide-react";
+import { Key, Shield, Sparkles, Check, Save, Cpu } from "lucide-react";
 import { api } from "@/lib/api";
+import { LOCAL_MODELS, DEFAULT_LOCAL_MODEL_ID } from "@/lib/localLlm/registry";
 
 interface SettingsViewProps {
   onSettingsSaved?: () => void;
@@ -10,6 +11,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsSaved }) =
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [provider, setProvider] = useState("gemini");
+  const [localEnabled, setLocalEnabled] = useState(false);
+  const [localModelId, setLocalModelId] = useState(DEFAULT_LOCAL_MODEL_ID);
   const [maskedGemini, setMaskedGemini] = useState("");
   const [maskedOpenai, setMaskedOpenai] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -25,6 +28,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsSaved }) =
       setMaskedGemini(data.gemini_api_key_masked || "");
       setMaskedOpenai(data.openai_api_key_masked || "");
       setProvider(data.default_provider || "gemini");
+      setLocalEnabled(Boolean(data.local_enabled));
+      if (data.local_model_id) setLocalModelId(data.local_model_id);
     } catch (e) {
       console.error(e);
     }
@@ -35,7 +40,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsSaved }) =
     setIsSaving(true);
     setSavedSuccess(false);
     try {
-      const updatePayload: any = { default_provider: provider };
+      const updatePayload: any = {
+        default_provider: provider,
+        local_enabled: localEnabled,
+        local_model_id: localModelId,
+      };
       if (geminiKey.trim()) updatePayload.gemini_api_key = geminiKey.trim();
       if (openaiKey.trim()) updatePayload.openai_api_key = openaiKey.trim();
 
@@ -153,6 +162,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsSaved }) =
               placeholder={maskedOpenai ? "Introduce nueva clave para reemplazar..." : "sk-..."}
               className="w-full text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
             />
+          </div>
+
+          {/* Local on-device LLM */}
+          <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-emerald-900 uppercase tracking-wide flex items-center space-x-1.5">
+                <Cpu className="w-4 h-4 text-emerald-700" />
+                <span>IA local en tu dispositivo (≤3B, Hugging Face)</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setLocalEnabled(!localEnabled)}
+                className={`text-[11px] font-bold px-3 py-1 rounded-full transition-colors ${
+                  localEnabled ? "bg-emerald-600 text-white" : "bg-white text-slate-600 border border-slate-300"
+                }`}
+              >
+                {localEnabled ? "Activada" : "Activar"}
+              </button>
+            </div>
+            <p className="text-[11px] text-emerald-900/80 leading-snug">
+              Qwen3-1.7B por defecto: corre con WebGPU en tu navegador (fallback a CPU con aviso), privado y sin
+              claves. Primera carga descarga ~1.1GB y queda en caché.
+            </p>
+            <select
+              value={localModelId}
+              onChange={(e) => setLocalModelId(e.target.value)}
+              className="w-full text-xs p-2.5 bg-white border border-emerald-300 rounded-xl text-slate-800 font-medium"
+            >
+              {LOCAL_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} · {m.sizeLabel} · {m.hfRepo}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500">
+              WebGPU: Chrome/Edge 113+. Sin WebGPU verás un aviso y se usará el fallback heuristic sin inventar datos.
+            </p>
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start space-x-2 text-[11px] text-slate-600">

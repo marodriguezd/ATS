@@ -14,6 +14,10 @@ class Settings:
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY", None)
     DEFAULT_LLM_PROVIDER: str = os.getenv("DEFAULT_LLM_PROVIDER", "gemini")
     DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash")
+    # Local Hugging Face model (<=3B). Default honors the user's pick: Qwen3-1.7B.
+    LOCAL_HF_MODEL_ID: str = os.getenv("LOCAL_HF_MODEL_ID", "Qwen/Qwen3-1.7B")
+    LOCAL_HF_GGUF_PATH: str = os.getenv("LOCAL_HF_GGUF_PATH", "")
+    LOCAL_HF_N_CTX: int = int(os.getenv("LOCAL_HF_N_CTX", "4096"))
     # Explicit CORS configuration (no wildcard + credentials combo).
     CORS_ORIGINS: list[str] = _csv_env(
         "CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"

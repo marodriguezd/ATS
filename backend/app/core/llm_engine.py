@@ -11,6 +11,7 @@ Rules enforced here and in prompts:
   - LLM JSON is schema-validated; malformed output is rejected and the
     safe fallback is used. API keys are never logged.
 """
+import asyncio
 import json
 import logging
 import os
@@ -23,7 +24,17 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PROVIDERS = ("gemini", "heuristic")
+SUPPORTED_PROVIDERS = ("gemini", "heuristic", "local_hf")
+
+# Default on-device/server model (<=3B, Hugging Face). Qwen3-1.7B is the
+# default by user preference: newest small multilingual, ES/EN capable.
+DEFAULT_LOCAL_HF_MODEL = os.getenv("LOCAL_HF_MODEL_ID", "Qwen/Qwen3-1.7B")
+# Optional direct GGUF path for llama-cpp-python (Q4 recommended on CPU).
+LOCAL_HF_GGUF_PATH = os.getenv("LOCAL_HF_GGUF_PATH", "")
+LOCAL_HF_N_CTX = int(os.getenv("LOCAL_HF_N_CTX", "4096"))
+
+_local_pipe = None
+_local_llama = None
 
 FACTUALITY_RULES = (
     "STRICT FACTUALITY RULES: do not invent metrics, percentages, results, "
@@ -34,13 +45,98 @@ FACTUALITY_RULES = (
 
 
 class LLMEngine:
-    """LLM rewriting (Gemini) with a deterministic truthful fallback."""
+    """LLM rewriting (Gemini / local HF <=3B) with a deterministic truthful fallback."""
 
     @classmethod
     def get_api_key(cls, provider: str = "gemini") -> Optional[str]:
         if provider == "gemini":
             return os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
         return None
+
+    @classmethod
+    def _local_available(cls) -> bool:
+        if _local_llama is not None or _local_pipe is not None:
+            return True
+        if LOCAL_HF_GGUF_PATH:
+            try:
+                __import__("llama_cpp")
+                return True
+            except ImportError:
+                pass
+        try:
+            __import__("transformers")
+            return True
+        except ImportError:
+            return False
+
+    @classmethod
+    def _call_local(cls, prompt: str) -> Optional[Dict[str, Any]]:
+        """Run the local HF model (GGUF via llama-cpp or transformers).
+
+        Returns a parsed JSON dict, raw text wrapped as {"text": ...}, or None
+        when no runtime is installed / load fails (caller uses heuristic fallback).
+        """
+        global _local_pipe, _local_llama
+        text: Optional[str] = None
+        try:
+            if LOCAL_HF_GGUF_PATH:
+                from llama_cpp import Llama  # type: ignore
+
+                if _local_llama is None:
+                    _local_llama = Llama(
+                        model_path=LOCAL_HF_GGUF_PATH,
+                        n_ctx=LOCAL_HF_N_CTX,
+                        verbose=False,
+                    )
+                out = _local_llama(
+                    prompt, max_tokens=512, temperature=0.2, stop=["```"]
+                )
+                choices = out.get("choices") or []
+                if choices:
+                    text = choices[0].get("text", "")
+            else:
+                from transformers import pipeline  # type: ignore
+
+                if _local_pipe is None:
+                    try:
+                        from transformers import BitsAndBytesConfig  # type: ignore
+
+                        quant = BitsAndBytesConfig(load_in_4bit=True)
+                        _local_pipe = pipeline(
+                            "text-generation",
+                            model=DEFAULT_LOCAL_HF_MODEL,
+                            model_kwargs={"quantization_config": quant},
+                            max_new_tokens=512,
+                            truncation=True,
+                        )
+                    except Exception:
+                        _local_pipe = pipeline(
+                            "text-generation",
+                            model=DEFAULT_LOCAL_HF_MODEL,
+                            max_new_tokens=512,
+                            truncation=True,
+                        )
+                outs = _local_pipe(prompt, max_new_tokens=512, temperature=0.2, do_sample=True)
+                if outs:
+                    gen = outs[0].get("generated_text", "")
+                    text = gen[len(prompt):] if gen.startswith(prompt) else gen
+        except Exception as e:  # missing dep / OOM / bad path -> explicit fallback
+            logger.warning("[LLM] local_hf unavailable: %s", type(e).__name__)
+            return None
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else {"text": text}
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", text, re.DOTALL)
+            if not m:
+                return {"text": text}
+            try:
+                parsed = json.loads(m.group(0))
+                return parsed if isinstance(parsed, dict) else {"text": text}
+            except json.JSONDecodeError:
+                return {"text": text}
 
     # -- public ----------------------------------------------------------
     @classmethod
@@ -74,6 +170,16 @@ class LLMEngine:
                         return validated
                 except Exception as e:  # provider failure -> explicit fallback
                     logger.warning("[LLM] Gemini call failed: %s", type(e).__name__)
+        elif provider == "local_hf":
+            try:
+                result = await asyncio.to_thread(cls._call_local, prompt)
+                validated = cls._validate_bullet_result(result, bullet)
+                if validated is not None:
+                    validated["engine"] = "local_hf"
+                    validated["model"] = DEFAULT_LOCAL_HF_MODEL
+                    return validated
+            except Exception as e:
+                logger.warning("[LLM] local_hf call failed: %s", type(e).__name__)
         return cls._fallback_star_rewrite(bullet, target_keywords)
 
     @classmethod
@@ -104,10 +210,82 @@ class LLMEngine:
                         return validated
                 except Exception as e:
                     logger.warning("[LLM] Gemini call failed: %s", type(e).__name__)
+        elif provider == "local_hf":
+            try:
+                result = await asyncio.to_thread(cls._call_local, prompt)
+                validated = cls._validate_summary_result(result)
+                if validated is not None:
+                    validated["engine"] = "local_hf"
+                    validated["model"] = DEFAULT_LOCAL_HF_MODEL
+                    return validated
+            except Exception as e:
+                logger.warning("[LLM] local_hf call failed: %s", type(e).__name__)
         return {
             "tailored_summary": (current_summary or "").strip() or "Professional summary not provided in source.",
             "keywords_included": (key_skills or [])[:3],
-            "tips": ["Add a Gemini API key in Settings for offer-tailored drafting."],
+            "tips": ["Add a Gemini API key in Settings or configure the local HF model for offer-tailored drafting."],
+            "fallback": True,
+        }
+
+    @classmethod
+    async def generate_assistant_answer(
+        cls,
+        question: str,
+        resume_text: str = "",
+        job_text: str = "",
+        audit_summary: str = "",
+        provider: str = "local_hf",
+    ) -> Dict[str, Any]:
+        """General resume assistant under the same factuality contract.
+
+        Plain-text answer grounded in the CV excerpt; never invents facts.
+        Falls back to a heuristic message when no provider is available.
+        """
+        if provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"Unsupported provider '{provider}'. Supported: {SUPPORTED_PROVIDERS}")
+        prompt = (
+            "You are a helpful resume assistant inside an ATS-readability tool. "
+            "Answer concisely in the user's language (Spanish or English). "
+            + FACTUALITY_RULES + " Never invent employers, dates, metrics or contact "
+            "details. Ground every claim in the CV excerpt below. If the answer is not "
+            "supported by the CV, say so explicitly.\n\n"
+            f"CV excerpt:\n{(resume_text or '')[:6000]}\n\n"
+            + (f"Job offer excerpt:\n{(job_text or '')[:3000]}\n\n" if job_text else "")
+            + (f"Audit signals:\n{(audit_summary or '')[:1500]}\n\n" if audit_summary else "")
+            + f"User question: {(question or '')[:2000]}\n\n"
+            "Reply in plain text (no JSON), max 12 lines, with actionable advice."
+        )
+        text: Optional[str] = None
+        if provider == "gemini":
+            key = cls.get_api_key("gemini")
+            if key:
+                try:
+                    result = await cls._call_gemini(prompt, key)
+                    if isinstance(result, dict):
+                        text = str(result.get("text") or result.get("tailored_summary") or "")
+                except Exception as e:
+                    logger.warning("[LLM] Gemini assistant failed: %s", type(e).__name__)
+        elif provider == "local_hf":
+            try:
+                result = await asyncio.to_thread(cls._call_local, prompt)
+                if isinstance(result, dict):
+                    text = str(result.get("text") or result.get("tailored_summary") or "")
+            except Exception as e:
+                logger.warning("[LLM] local_hf assistant failed: %s", type(e).__name__)
+        if text and text.strip():
+            return {
+                "answer": text.strip()[:3000],
+                "engine": provider,
+                "model": DEFAULT_LOCAL_HF_MODEL if provider == "local_hf" else settings.DEFAULT_MODEL,
+                "fallback": False,
+            }
+        return {
+            "answer": (
+                "Local assistant unavailable (no local runtime loaded and no Gemini key). "
+                "Install a local runtime (llama-cpp-python with a Qwen3-1.7B Q4 GGUF, or transformers) "
+                "or add a Gemini API key. No content was invented."
+            ),
+            "engine": "heuristic",
             "fallback": True,
         }
 

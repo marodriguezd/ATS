@@ -74,6 +74,25 @@ export interface AuditResult {
 // Storage is versioned and bounded; resume content is user data, API keys
 // must avoid unnecessary persistence (see SettingsView security notice).
 const STORAGE_KEY = "ats_local_resumes_v1";
+const LOCAL_ENABLED_KEY = "ats_local_enabled";
+const LOCAL_MODEL_KEY = "ats_local_model_id";
+export const DEFAULT_LOCAL_MODEL_ID = "qwen3-1.7b";
+
+export function isLocalLlmEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(LOCAL_ENABLED_KEY) === "1";
+}
+
+export function getLocalModelId(): string {
+  if (typeof window === "undefined") return DEFAULT_LOCAL_MODEL_ID;
+  return localStorage.getItem(LOCAL_MODEL_KEY) || DEFAULT_LOCAL_MODEL_ID;
+}
+
+export function setLocalLlmConfig(enabled: boolean, modelId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LOCAL_ENABLED_KEY, enabled ? "1" : "0");
+  localStorage.setItem(LOCAL_MODEL_KEY, modelId);
+}
 function getLocalResumes(): StandaloneResume[] {
   if (typeof window === "undefined") return STANDALONE_PROFILES;
   try {
@@ -360,7 +379,27 @@ export const api = {
     return standaloneAutoFix(found, job_text || "") as unknown as { new_resume_id: number; perfected_score: AuditResult; raw_ats_view: string; untangled_view: string; warnings?: string[] };
   },
 
-  async rewriteBullet(bullet: string, role_context?: string, target_keywords?: string[]) {
+  async rewriteBullet(bullet: string, role_context?: string, target_keywords?: string[], provider?: string) {
+    // 1) On-device local LLM (WebGPU) when enabled or explicitly requested.
+    if (provider === "local" || (isLocalLlmEnabled() && provider !== "gemini")) {
+      try {
+        const [{ buildBulletPrompt }, { localRewriteBullet }] = await Promise.all([
+          import("./localLlm/prompts"),
+          import("./localLlm/engine"),
+        ]);
+        const local = await localRewriteBullet(
+          buildBulletPrompt(bullet, role_context, target_keywords),
+          bullet,
+          target_keywords,
+          getLocalModelId()
+        );
+        if (!(local as { fallback?: boolean; localAttempted?: boolean }).localAttempted) return local;
+        // localAttempted + fallback => model unavailable: keep trying backend below
+        if (!(local as { fallback?: boolean }).fallback) return local;
+      } catch {
+        // fall through to backend/heuristic
+      }
+    }
     const apiBase = getApiBase();
     try {
       const controller = new AbortController();
@@ -392,7 +431,24 @@ export const api = {
     };
   },
 
-  async optimizeSummary(current_summary: string, job_text: string, key_skills?: string[]) {
+  async optimizeSummary(current_summary: string, job_text: string, key_skills?: string[], provider?: string) {
+    if (provider === "local" || (isLocalLlmEnabled() && provider !== "gemini")) {
+      try {
+        const [{ buildSummaryPrompt }, { localOptimizeSummary }] = await Promise.all([
+          import("./localLlm/prompts"),
+          import("./localLlm/engine"),
+        ]);
+        const local = await localOptimizeSummary(
+          buildSummaryPrompt(current_summary, job_text, key_skills),
+          current_summary,
+          key_skills,
+          getLocalModelId()
+        );
+        if (!(local as { fallback?: boolean }).fallback) return local;
+      } catch {
+        // fall through
+      }
+    }
     const apiBase = getApiBase();
     try {
       const res = await fetch(`${apiBase}/audit/optimize-summary`, {
@@ -407,6 +463,39 @@ export const api = {
       tailored_summary: current_summary || "Professional summary not provided in source.",
       keywords_included: (key_skills || []).slice(0, 3),
       tips: ["Backend unavailable: connect to use LLM drafting. No content was invented."],
+      fallback: true,
+    };
+  },
+
+  async askAssistant(question: string, context: { resumeText?: string; jobText?: string; auditSummary?: string; provider?: string }) {
+    if ((context.provider ?? (isLocalLlmEnabled() ? "local" : "heuristic")) === "local") {
+      try {
+        const [{ buildAssistantPrompt }, { localChat }] = await Promise.all([
+          import("./localLlm/prompts"),
+          import("./localLlm/engine"),
+        ]);
+        const prompt = buildAssistantPrompt(
+          question,
+          context.resumeText ?? "",
+          context.jobText ?? "",
+          context.auditSummary ?? ""
+        );
+        const res = await localChat(prompt, getLocalModelId());
+        return { answer: res.text, engine: res.engine, fallback: res.fallback, model: getLocalModelId() };
+      } catch {
+        // fall through to backend attempt below
+      }
+    }
+    // Backend has no generic chat endpoint: return a grounded heuristic answer.
+    const tips: string[] = [];
+    if (context.auditSummary) tips.push(context.auditSummary.slice(0, 800));
+    if (context.jobText) tips.push("Compara tus viñetas con la oferta y añade solo keywords que ya puedas acreditar.");
+    return {
+      answer:
+        "Asistente local no disponible y el backend no expone chat general. " +
+        "Activa el modelo local (Qwen3-1.7B, WebGPU) en Ajustes para respuestas en el dispositivo. " +
+        tips.join(" "),
+      engine: "heuristic",
       fallback: true,
     };
   },
@@ -430,14 +519,19 @@ export const api = {
       openai_api_key_configured: false,
       openai_api_key_masked: null,
       default_provider: "gemini",
+      local_enabled: isLocalLlmEnabled(),
+      local_model_id: getLocalModelId(),
       security_note: "Browser-only mode: any key is stored in localStorage (XSS-readable). Prefer backend env mode.",
     };
   },
 
-  async updateSettings(settings: { gemini_api_key?: string; openai_api_key?: string; default_provider?: string; api_url?: string }) {
+  async updateSettings(settings: { gemini_api_key?: string; openai_api_key?: string; default_provider?: string; api_url?: string; local_enabled?: boolean; local_model_id?: string }) {
     if (typeof window !== "undefined") {
       if (settings.gemini_api_key) localStorage.setItem("ats_gemini_key", settings.gemini_api_key);
       if (settings.api_url) localStorage.setItem("ats_api_url", settings.api_url);
+      if (typeof settings.local_enabled === "boolean")
+        localStorage.setItem(LOCAL_ENABLED_KEY, settings.local_enabled ? "1" : "0");
+      if (settings.local_model_id) localStorage.setItem(LOCAL_MODEL_KEY, settings.local_model_id);
     }
 
     const apiBase = getApiBase();
